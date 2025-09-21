@@ -12,5 +12,3 @@ module.exports = {
   DB_PATH,
   UPLOAD_DIR,
 };
-
-s
