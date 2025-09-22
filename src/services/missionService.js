@@ -151,7 +151,7 @@ const listMissions = async ({ role, userId, filters = {} }) => {
       'users.login'
     ];
     const keywordClause = '(' + keywordColumns
-      .map((column) => "LOWER(COALESCE(" + column + ", '')) LIKE ?")
+      .map((column) => `LOWER(COALESCE(${column}, '')) LIKE ?`)
       .join(' OR ') + ')';
     const likeValue = '%' + keyword + '%';
     conditions.push(keywordClause);
@@ -291,7 +291,7 @@ const createMission = async (payload, currentUserId) => {
       garage_id,
       statut,
       created_by
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       insurer.nom,
       insurer.contact || null,
@@ -459,6 +459,8 @@ module.exports = {
   updateMissionStatus,
   deleteMission,
 };
+
+
 
 
 
