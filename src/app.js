@@ -35,4 +35,11 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: 'Erreur interne du serveur' });
 });
 
+const path = require('path');
+app.use(express.static(path.join(__dirname, 'public')));
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 module.exports = app;
+
