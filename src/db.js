@@ -102,6 +102,10 @@ const initializeDatabase = async () => {
       garage_contact TEXT,
       agent_id INTEGER,
       assureur_id INTEGER,
+      assureur_agence_id INTEGER,
+      assureur_agence_nom TEXT,
+      assureur_agence_adresse TEXT,
+      assureur_agence_contact TEXT,
       vehicule_marque_id INTEGER,
       garage_id INTEGER,
       statut TEXT NOT NULL DEFAULT 'cree' CHECK (statut IN ('cree', 'affectee', 'en_cours', 'terminee')),
@@ -123,6 +127,32 @@ const initializeDatabase = async () => {
       fichier TEXT NOT NULL,
       phase TEXT CHECK (phase IN ('avant', 'apres')) DEFAULT 'avant',
       label TEXT,
+      uploaded_by INTEGER,
+      uploaded_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(mission_id) REFERENCES missions(id) ON DELETE CASCADE,
+      FOREIGN KEY(uploaded_by) REFERENCES users(id)
+    )
+  `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS insurer_agencies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      insurer_id INTEGER NOT NULL,
+      nom TEXT NOT NULL,
+      adresse TEXT,
+      telephone TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(insurer_id) REFERENCES insurers(id) ON DELETE CASCADE
+    )
+  `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS mission_documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      mission_id INTEGER NOT NULL,
+      fichier TEXT NOT NULL,
+      nom_original TEXT,
+      mime_type TEXT,
       uploaded_by INTEGER,
       uploaded_at TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY(mission_id) REFERENCES missions(id) ON DELETE CASCADE,
@@ -186,6 +216,45 @@ const initializeDatabase = async () => {
       throw error;
     }
   }
+
+  try {
+    await run('ALTER TABLE missions ADD COLUMN assureur_agence_id INTEGER');
+  } catch (error) {
+    if (!String(error.message).includes('duplicate column name')) {
+      throw error;
+    }
+  }
+
+  try {
+    await run('ALTER TABLE missions ADD COLUMN assureur_agence_nom TEXT');
+  } catch (error) {
+    if (!String(error.message).includes('duplicate column name')) {
+      throw error;
+    }
+  }
+
+  try {
+    await run('ALTER TABLE missions ADD COLUMN assureur_agence_adresse TEXT');
+  } catch (error) {
+    if (!String(error.message).includes('duplicate column name')) {
+      throw error;
+    }
+  }
+
+  try {
+    await run('ALTER TABLE missions ADD COLUMN assureur_agence_contact TEXT');
+  } catch (error) {
+    if (!String(error.message).includes('duplicate column name')) {
+      throw error;
+    }
+  }
+
+  try {
+    await run('CREATE INDEX IF NOT EXISTS idx_agencies_insurer ON insurer_agencies(insurer_id)');
+  } catch (error) {
+    // ignore index errors
+  }
+
 };
 
 module.exports = {

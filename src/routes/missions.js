@@ -5,10 +5,24 @@ const path = require('path');
 const { authenticate, authorizeRoles } = require('../middleware/auth');
 const missionService = require('../services/missionService');
 const { addPhotos, listPhotosByMission, getPhotoById, deletePhoto } = require('../services/photoService');
+const {
+  addDocuments,
+  listDocumentsByMission,
+  getDocumentById,
+  deleteDocument,
+} = require('../services/documentService');
 const { ROLES, MISSION_STATUSES, PHOTO_LABELS } = require('../constants');
 const { UPLOAD_DIR } = require('../config');
 
 const router = express.Router();
+
+const ALLOWED_DOCUMENT_EXTENSIONS = new Set(['.pdf', '.doc', '.docx', '.txt']);
+const ALLOWED_DOCUMENT_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+]);
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -23,6 +37,12 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage });
+const documentUpload = multer({ storage });
+
+const isAllowedDocumentFile = (file) => {
+  const extension = path.extname(file.originalname || '').toLowerCase();
+  return ALLOWED_DOCUMENT_EXTENSIONS.has(extension) || ALLOWED_DOCUMENT_MIME_TYPES.has(file.mimetype);
+};
 
 router.use(authenticate);
 
@@ -73,8 +93,11 @@ router.get('/', async (req, res) => {
 
 router.get('/:id', loadMissionForUser, async (req, res) => {
   try {
-    const photos = await listPhotosByMission(req.params.id);
-    res.json({ mission: req.mission, photos, photoLabels: PHOTO_LABELS });
+    const [photos, documents] = await Promise.all([
+      listPhotosByMission(req.params.id),
+      listDocumentsByMission(req.params.id),
+    ]);
+    res.json({ mission: req.mission, photos, documents, photoLabels: PHOTO_LABELS });
   } catch (error) {
     res.status(500).json({ message: 'Erreur lors de la recuperation de la mission' });
   }
@@ -146,6 +169,90 @@ router.delete('/:id', authorizeRoles(ROLES.GESTIONNAIRE), async (req, res) => {
     res.status(204).send();
   } catch (error) {
     res.status(500).json({ message: 'Erreur lors de la suppression de la mission' });
+  }
+});
+
+router.post(
+  '/:id/documents',
+  loadMissionForUser,
+  documentUpload.array('documents', 10),
+  async (req, res) => {
+    if (!req.files || !req.files.length) {
+      return res.status(400).json({ message: 'Aucun fichier recu' });
+    }
+
+    const invalidFiles = req.files.filter((file) => !isAllowedDocumentFile(file));
+    if (invalidFiles.length) {
+      invalidFiles.forEach((file) => {
+        try {
+          fs.unlinkSync(file.path);
+        } catch (error) {
+          if (error.code !== 'ENOENT') {
+            console.error('Impossible de supprimer un fichier document invalide', error);
+          }
+        }
+      });
+      return res.status(400).json({ message: 'Formats autorises : PDF, DOC, DOCX ou TXT.' });
+    }
+
+    try {
+      const files = req.files.map((file) => ({
+        ...file,
+        relativePath: `${req.params.id}/${file.filename}`,
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+      }));
+
+      await addDocuments({
+        missionId: req.params.id,
+        files,
+        uploadedBy: req.user.id,
+      });
+
+      let mission = req.mission;
+      if (
+        req.user.role === ROLES.AGENT &&
+        mission.statut !== 'terminee' &&
+        mission.statut !== 'en_cours'
+      ) {
+        mission = await missionService.updateMissionStatus(req.params.id, 'en_cours');
+      } else {
+        mission = await missionService.getMissionById(req.params.id);
+      }
+
+      const documents = await listDocumentsByMission(req.params.id);
+      res.status(201).json({ documents, mission });
+    } catch (error) {
+      console.error('Erreur document upload', error);
+      res.status(500).json({ message: 'Erreur lors de lenregistrement des documents' });
+    }
+  }
+);
+
+router.delete('/:id/documents/:documentId', loadMissionForUser, async (req, res) => {
+  try {
+    const document = await getDocumentById(req.params.documentId);
+    if (!document || document.missionId !== Number(req.params.id)) {
+      return res.status(404).json({ message: 'Document introuvable' });
+    }
+
+    const absolutePath = path.join(UPLOAD_DIR, document.fichier);
+    try {
+      fs.unlinkSync(absolutePath);
+    } catch (err) {
+      if (err.code !== 'ENOENT') {
+        console.error('Impossible de supprimer le fichier document', err);
+      }
+    }
+
+    await deleteDocument(document.id);
+    const [documents, mission] = await Promise.all([
+      listDocumentsByMission(req.params.id),
+      missionService.getMissionById(req.params.id),
+    ]);
+    res.json({ documents, mission });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur lors de la suppression du document' });
   }
 });
 

@@ -2,6 +2,7 @@ const { run, get, all } = require('../db');
 const { MISSION_STATUSES, ASSIGNABLE_ROLES } = require('../constants');
 const { getUserById } = require('./userService');
 const { getInsurerById } = require('./insurerService');
+const { getAgencyById } = require('./insurerAgencyService');
 const { getBrandById } = require('./vehicleBrandService');
 const { getGarageById } = require('./garageService');
 
@@ -27,6 +28,10 @@ const mapMission = (mission) => {
     assureurId: mission.assureur_id !== null ? Number(mission.assureur_id) : null,
     assureurNom,
     assureurContact,
+    assureurAgenceId: mission.assureur_agence_id !== null ? Number(mission.assureur_agence_id) : null,
+    assureurAgenceNom: mission.assureur_agence_nom,
+    assureurAgenceAdresse: mission.assureur_agence_adresse,
+    assureurAgenceContact: mission.assureur_agence_contact,
     assureNom: mission.assure_nom,
     assureTelephone: mission.assure_telephone,
     assureEmail: mission.assure_email,
@@ -115,6 +120,29 @@ const ensureValidGarage = async (garageId) => {
   };
 };
 
+const ensureValidAgency = async (agencyId, insurerId) => {
+  if (agencyId === undefined) {
+    return undefined;
+  }
+  if (agencyId === null || agencyId === '') {
+    return null;
+  }
+  const agency = await getAgencyById(agencyId);
+  if (!agency) {
+    throw new Error("Agence d'assurance introuvable");
+  }
+  if (insurerId && Number(agency.insurerId) !== Number(insurerId)) {
+    throw new Error("Cette agence n'appartient pas a l'assureur selectionne");
+  }
+  return {
+    id: Number(agency.id),
+    nom: agency.nom,
+    adresse: agency.adresse || null,
+    contact: agency.telephone || null,
+    insurerId: agency.insurerId,
+  };
+};
+
 const listMissions = async ({ role, userId, filters = {} }) => {
   const conditions = [];
   const params = [];
@@ -130,6 +158,9 @@ const listMissions = async ({ role, userId, filters = {} }) => {
     const keywordColumns = [
       'missions.assureur_nom',
       'missions.assureur_contact',
+      'missions.assureur_agence_nom',
+      'missions.assureur_agence_contact',
+      'missions.assureur_agence_adresse',
       'missions.assure_nom',
       'missions.assure_telephone',
       'missions.assure_email',
@@ -220,6 +251,7 @@ const getMissionById = async (id) => {
 const createMission = async (payload, currentUserId) => {
   const {
     assureurId,
+    assureurAgenceId,
     assureNom,
     assureTelephone,
     assureEmail,
@@ -241,6 +273,8 @@ const createMission = async (payload, currentUserId) => {
   if (!insurer) {
     throw new Error('Assureur requis');
   }
+
+  const agency = await ensureValidAgency(assureurAgenceId, insurer.id);
 
   const brand = await ensureValidBrand(vehiculeMarqueId);
   if (!brand) {
@@ -271,6 +305,10 @@ const createMission = async (payload, currentUserId) => {
     `INSERT INTO missions (
       assureur_nom,
       assureur_contact,
+      assureur_agence_id,
+      assureur_agence_nom,
+      assureur_agence_adresse,
+      assureur_agence_contact,
       assure_nom,
       assure_telephone,
       assure_email,
@@ -295,6 +333,10 @@ const createMission = async (payload, currentUserId) => {
     [
       insurer.nom,
       insurer.contact || null,
+      agency ? agency.id : null,
+      agency ? agency.nom : null,
+      agency ? agency.adresse : null,
+      agency ? agency.contact : null,
       assureNom,
       assureTelephone,
       assureEmail,
@@ -372,6 +414,15 @@ const updateMission = async (id, payload) => {
     insurerInfo = await ensureValidInsurer(payload.assureurId);
   }
 
+  const futureInsurerId = insurerInfo ? insurerInfo.id : current.assureurId;
+
+  let agencyInfo;
+  if (Object.prototype.hasOwnProperty.call(payload, 'assureurAgenceId')) {
+    agencyInfo = await ensureValidAgency(payload.assureurAgenceId, futureInsurerId);
+  } else if (insurerInfo !== undefined) {
+    agencyInfo = null;
+  }
+
   let brandInfo;
   if (Object.prototype.hasOwnProperty.call(payload, 'vehiculeMarqueId')) {
     brandInfo = await ensureValidBrand(payload.vehiculeMarqueId);
@@ -398,6 +449,13 @@ const updateMission = async (id, payload) => {
     pushUpdate('assureur_id', insurerInfo.id);
     pushUpdate('assureur_nom', insurerInfo.nom);
     pushUpdate('assureur_contact', insurerInfo.contact || null);
+  }
+
+  if (agencyInfo !== undefined) {
+    pushUpdate('assureur_agence_id', agencyInfo ? agencyInfo.id : null);
+    pushUpdate('assureur_agence_nom', agencyInfo ? agencyInfo.nom : null);
+    pushUpdate('assureur_agence_adresse', agencyInfo ? agencyInfo.adresse : null);
+    pushUpdate('assureur_agence_contact', agencyInfo ? agencyInfo.contact : null);
   }
 
   if (brandInfo !== undefined) {

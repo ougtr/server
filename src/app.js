@@ -7,6 +7,7 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const missionRoutes = require('./routes/missions');
 const insurerRoutes = require('./routes/insurers');
+const insurerAgencyRoutes = require('./routes/insurerAgencies');
 const vehicleBrandRoutes = require('./routes/vehicleBrands');
 const garageRoutes = require('./routes/garages');
 
@@ -21,6 +22,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/missions', missionRoutes);
 app.use('/api/insurers', insurerRoutes);
+app.use('/api/insurer-agencies', insurerAgencyRoutes);
 app.use('/api/vehicle-brands', vehicleBrandRoutes);
 app.use('/api/garages', garageRoutes);
 
@@ -34,4 +36,3 @@ app.use((err, req, res, next) => {
 });
 
 module.exports = app;
-
