@@ -165,7 +165,7 @@ const ensureValidAgency = async (agencyId, insurerId) => {
   };
 };
 
-const listMissions = async ({ role, userId, filters = {} }) => {
+const listMissions = async ({ role, userId, filters = {}, pagination = {} }) => {
   const conditions = [];
   const params = [];
 
@@ -233,23 +233,45 @@ const listMissions = async ({ role, userId, filters = {} }) => {
 
   const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
+  const baseFromClause = `FROM missions
+     LEFT JOIN users ON users.id = missions.agent_id
+     LEFT JOIN insurers ON insurers.id = missions.assureur_id
+     LEFT JOIN vehicle_brands ON vehicle_brands.id = missions.vehicule_marque_id
+     LEFT JOIN garages ON garages.id = missions.garage_id
+     ${whereClause}`;
+
+  const aggregateRow = await get(
+    `SELECT COUNT(*) AS total, MAX(missions.updated_at) AS latestUpdate
+     ${baseFromClause}`,
+    params
+  );
+
+  const total = aggregateRow ? Number(aggregateRow.total) : 0;
+  const normalizedPageSize = Math.min(Math.max(parseInt(pagination.pageSize, 10) || 10, 1), 100);
+  const requestedPage = Math.max(parseInt(pagination.page, 10) || 1, 1);
+  const totalPages = total ? Math.max(1, Math.ceil(total / normalizedPageSize)) : 1;
+  const safePage = total ? Math.min(requestedPage, totalPages) : 1;
+  const offset = (safePage - 1) * normalizedPageSize;
+
   const rows = await all(
     `SELECT missions.*, users.login AS agent_login, insurers.nom AS insurer_nom, insurers.contact AS insurer_contact,
             vehicle_brands.nom AS brand_nom,
             garages.nom AS garage_nom_ref,
             garages.adresse AS garage_adresse_ref,
             garages.contact AS garage_contact_ref
-     FROM missions
-     LEFT JOIN users ON users.id = missions.agent_id
-     LEFT JOIN insurers ON insurers.id = missions.assureur_id
-     LEFT JOIN vehicle_brands ON vehicle_brands.id = missions.vehicule_marque_id
-     LEFT JOIN garages ON garages.id = missions.garage_id
-     ${whereClause}
-     ORDER BY missions.created_at DESC`,
-    params
+     ${baseFromClause}
+     ORDER BY missions.created_at DESC
+     LIMIT ? OFFSET ?`,
+    [...params, normalizedPageSize, offset]
   );
 
-  return rows.map(mapMission);
+  return {
+    missions: rows.map(mapMission),
+    total,
+    page: safePage,
+    pageSize: normalizedPageSize,
+    latestUpdate: aggregateRow?.latestUpdate || null,
+  };
 };
 
 const getMissionById = async (id) => {

@@ -72,9 +72,12 @@ router.get('/', async (req, res) => {
     return res.status(400).json({ message: 'Le mot-cle doit contenir au moins 3 caracteres' });
   }
 
+  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+  const requestedPageSize = Math.max(parseInt(req.query.pageSize, 10) || 10, 1);
+  const pageSize = Math.min(requestedPageSize, 100);
 
   try {
-    const missions = await missionService.listMissions({
+    const result = await missionService.listMissions({
       role: req.user.role,
       userId: req.user.id,
       filters: {
@@ -84,8 +87,13 @@ router.get('/', async (req, res) => {
         toDate,
         keyword: trimmedKeyword || undefined,
       },
+      pagination: { page, pageSize },
     });
-    res.json({ missions, statuses: MISSION_STATUSES, photoLabels: PHOTO_LABELS });
+    res.json({
+      ...result,
+      statuses: MISSION_STATUSES,
+      photoLabels: PHOTO_LABELS,
+    });
   } catch (error) {
     res.status(500).json({ message: 'Impossible de recuperer les missions' });
   }
