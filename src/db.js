@@ -92,11 +92,12 @@ const initializeDatabase = async () => {
       vehicule_marque TEXT,
       vehicule_modele TEXT,
       vehicule_immatriculation TEXT,
-      vehicule_annee INTEGER,
+      vehicule_annee TEXT,
       sinistre_type TEXT,
       sinistre_circonstances TEXT,
       sinistre_date TEXT,
       sinistre_police TEXT,
+      sinistre_police_adverse TEXT,
       garage_nom TEXT,
       garage_adresse TEXT,
       garage_contact TEXT,
@@ -106,6 +107,8 @@ const initializeDatabase = async () => {
       assureur_agence_nom TEXT,
       assureur_agence_adresse TEXT,
       assureur_agence_contact TEXT,
+      assureur_adverse_id INTEGER,
+      assureur_adverse_nom TEXT,
       vehicule_marque_id INTEGER,
       garage_id INTEGER,
       statut TEXT NOT NULL DEFAULT 'cree' CHECK (statut IN ('cree', 'affectee', 'en_cours', 'terminee')),
@@ -160,6 +163,38 @@ const initializeDatabase = async () => {
     )
   `);
 
+  await run(`
+    CREATE TABLE IF NOT EXISTS mission_labors (
+      mission_id INTEGER NOT NULL,
+      category TEXT NOT NULL,
+      hours REAL NOT NULL DEFAULT 0,
+      rate REAL NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (mission_id, category),
+      FOREIGN KEY(mission_id) REFERENCES missions(id) ON DELETE CASCADE
+    )
+  `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS mission_damages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      mission_id INTEGER NOT NULL,
+      piece TEXT NOT NULL,
+      price_ht REAL NOT NULL DEFAULT 0,
+      vetuste REAL NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(mission_id) REFERENCES missions(id) ON DELETE CASCADE
+    )
+  `);
+
+  try {
+    await run('CREATE INDEX IF NOT EXISTS idx_mission_damages_mission ON mission_damages(mission_id)');
+  } catch (error) {
+    // ignore
+  }
+
   try {
     await run('ALTER TABLE missions ADD COLUMN assureur_id INTEGER');
   } catch (error) {
@@ -185,6 +220,38 @@ const initializeDatabase = async () => {
   }
   try {
     await run('ALTER TABLE missions ADD COLUMN sinistre_police TEXT');
+  } catch (error) {
+    if (!String(error.message).includes('duplicate column name')) {
+      throw error;
+    }
+  }
+
+  try {
+    await run('ALTER TABLE missions ADD COLUMN sinistre_police_adverse TEXT');
+  } catch (error) {
+    if (!String(error.message).includes('duplicate column name')) {
+      throw error;
+    }
+  }
+
+  try {
+    await run('ALTER TABLE missions ADD COLUMN labor_supplies_ht REAL DEFAULT 0');
+  } catch (error) {
+    if (!String(error.message).includes('duplicate column name')) {
+      throw error;
+    }
+  }
+
+  try {
+    await run('ALTER TABLE missions ADD COLUMN assureur_adverse_id INTEGER');
+  } catch (error) {
+    if (!String(error.message).includes('duplicate column name')) {
+      throw error;
+    }
+  }
+
+  try {
+    await run('ALTER TABLE missions ADD COLUMN assureur_adverse_nom TEXT');
   } catch (error) {
     if (!String(error.message).includes('duplicate column name')) {
       throw error;

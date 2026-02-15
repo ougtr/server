@@ -44,10 +44,13 @@ const mapMission = (mission) => {
     sinistreCirconstances: mission.sinistre_circonstances,
     sinistreDate: mission.sinistre_date,
     sinistrePolice: mission.sinistre_police,
+    sinistrePoliceAdverse: mission.sinistre_police_adverse,
     garageId: mission.garage_id !== null ? Number(mission.garage_id) : null,
     garageNom,
     garageAdresse,
     garageContact,
+    assureurAdverseId: mission.assureur_adverse_id !== null ? Number(mission.assureur_adverse_id) : null,
+    assureurAdverseNom: mission.assureur_adverse_nom || null,
     agentId: mission.agent_id !== null ? Number(mission.agent_id) : null,
     agentLogin: mission.agent_login,
     statut: mission.statut,
@@ -296,6 +299,7 @@ const createMission = async (payload, currentUserId) => {
   const {
     assureurId,
     assureurAgenceId,
+    assureurAdverseId,
     assureNom,
     assureTelephone,
     assureEmail,
@@ -307,6 +311,7 @@ const createMission = async (payload, currentUserId) => {
     sinistreCirconstances,
     sinistreDate,
     sinistrePolice,
+    sinistrePoliceAdverse,
 
     garageId,
     agentId,
@@ -319,6 +324,8 @@ const createMission = async (payload, currentUserId) => {
   }
 
   const agency = await ensureValidAgency(assureurAgenceId, insurer.id);
+
+  const adverseInsurer = await ensureValidInsurer(assureurAdverseId);
 
   const brand = await ensureValidBrand(vehiculeMarqueId);
   if (!brand) {
@@ -344,6 +351,10 @@ const createMission = async (payload, currentUserId) => {
 
   const normalizedPolice = typeof sinistrePolice === 'string' ? sinistrePolice.trim() : sinistrePolice;
   const policeValue = normalizedPolice && normalizedPolice !== '' ? normalizedPolice : null;
+  const normalizedAdversePolice =
+    typeof sinistrePoliceAdverse === 'string' ? sinistrePoliceAdverse.trim() : sinistrePoliceAdverse;
+  const adversePoliceValue =
+    normalizedAdversePolice && normalizedAdversePolice !== '' ? normalizedAdversePolice : null;
   const circulationDate = normalizeCirculationDate(vehiculeAnnee);
 
   const result = await run(
@@ -354,6 +365,8 @@ const createMission = async (payload, currentUserId) => {
       assureur_agence_nom,
       assureur_agence_adresse,
       assureur_agence_contact,
+      assureur_adverse_id,
+      assureur_adverse_nom,
       assure_nom,
       assure_telephone,
       assure_email,
@@ -365,6 +378,7 @@ const createMission = async (payload, currentUserId) => {
       sinistre_circonstances,
       sinistre_date,
       sinistre_police,
+      sinistre_police_adverse,
       garage_nom,
       garage_adresse,
       garage_contact,
@@ -372,9 +386,10 @@ const createMission = async (payload, currentUserId) => {
       assureur_id,
       vehicule_marque_id,
       garage_id,
+      labor_supplies_ht,
       statut,
       created_by
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       insurer.nom,
       insurer.contact || null,
@@ -382,6 +397,8 @@ const createMission = async (payload, currentUserId) => {
       agency ? agency.nom : null,
       agency ? agency.adresse : null,
       agency ? agency.contact : null,
+      adverseInsurer ? adverseInsurer.id : null,
+      adverseInsurer ? adverseInsurer.nom : null,
       assureNom,
       assureTelephone,
       assureEmail,
@@ -393,6 +410,7 @@ const createMission = async (payload, currentUserId) => {
       sinistreCirconstances,
       sinistreDate,
       policeValue,
+      adversePoliceValue,
       garage ? garage.nom : null,
       garage ? garage.adresse : null,
       garage ? garage.contact : null,
@@ -400,6 +418,7 @@ const createMission = async (payload, currentUserId) => {
       insurer.id,
       brand.id,
       garage ? garage.id : null,
+      0,
       initialStatus,
       currentUserId,
     ]
@@ -473,6 +492,11 @@ const updateMission = async (id, payload) => {
     brandInfo = await ensureValidBrand(payload.vehiculeMarqueId);
   }
 
+  let adverseInsurerInfo;
+  if (Object.prototype.hasOwnProperty.call(payload, 'assureurAdverseId')) {
+    adverseInsurerInfo = await ensureValidInsurer(payload.assureurAdverseId);
+  }
+
   let garageInfo;
   if (Object.prototype.hasOwnProperty.call(payload, 'garageId')) {
     if (payload.garageId === null || payload.garageId === '') {
@@ -504,6 +528,11 @@ const updateMission = async (id, payload) => {
     pushUpdate('assureur_agence_contact', agencyInfo ? agencyInfo.contact : null);
   }
 
+  if (adverseInsurerInfo !== undefined) {
+    pushUpdate('assureur_adverse_id', adverseInsurerInfo ? adverseInsurerInfo.id : null);
+    pushUpdate('assureur_adverse_nom', adverseInsurerInfo ? adverseInsurerInfo.nom : null);
+  }
+
   if (brandInfo !== undefined) {
     pushUpdate('vehicule_marque_id', brandInfo.id);
     pushUpdate('vehicule_marque', brandInfo.nom);
@@ -526,6 +555,7 @@ const updateMission = async (id, payload) => {
   if (Object.prototype.hasOwnProperty.call(payload, 'sinistreCirconstances')) pushUpdate('sinistre_circonstances', payload.sinistreCirconstances);
   if (Object.prototype.hasOwnProperty.call(payload, 'sinistreDate')) pushUpdate('sinistre_date', payload.sinistreDate);
   if (Object.prototype.hasOwnProperty.call(payload, 'sinistrePolice')) pushUpdate('sinistre_police', payload.sinistrePolice);
+  if (Object.prototype.hasOwnProperty.call(payload, 'sinistrePoliceAdverse')) pushUpdate('sinistre_police_adverse', payload.sinistrePoliceAdverse);
   if (assigneeIdValue !== undefined) pushUpdate('agent_id', assigneeIdValue);
   if (Object.prototype.hasOwnProperty.call(payload, 'statut')) pushUpdate('statut', payload.statut);
 

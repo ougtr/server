@@ -85,9 +85,19 @@ const PHOTO_LABELS = [
   'Signalisation - Clignotants et warnings',
 ];
 
+const LABOR_CATEGORIES = [
+  { id: 'tolerie_changement', label: 'Tôlerie (changement)' },
+  { id: 'tolerie_dressage', label: 'Tôlerie (dressage)' },
+  { id: 'peinture', label: 'Peinture' },
+  { id: 'mecanique', label: 'Mécanique' },
+  { id: 'electricite', label: 'Électricité' },
+  { id: 'bris_glace', label: 'Bris de glace' },
+];
+
 module.exports = {
   ROLES,
   MISSION_STATUSES,
   ASSIGNABLE_ROLES,
   PHOTO_LABELS,
+  LABOR_CATEGORIES,
 };

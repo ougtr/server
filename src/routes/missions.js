@@ -11,8 +11,17 @@ const {
   getDocumentById,
   deleteDocument,
 } = require('../services/documentService');
+const {
+  listDamagesByMission,
+  addDamage,
+  updateDamage,
+  deleteDamage,
+  getDamageById,
+} = require('../services/damageService');
+const { listLaborsByMission, saveLabors } = require('../services/laborService');
 const { ROLES, MISSION_STATUSES, PHOTO_LABELS } = require('../constants');
 const { UPLOAD_DIR } = require('../config');
+const { createMissionReport } = require('../services/reportService');
 
 const router = express.Router();
 
@@ -64,6 +73,16 @@ const loadMissionForUser = async (req, res, next) => {
   }
 };
 
+const canEditMission = (req) => {
+  if (req.user.role === ROLES.GESTIONNAIRE) {
+    return true;
+  }
+  if (req.user.role === ROLES.AGENT && req.mission && req.mission.agentId === req.user.id) {
+    return true;
+  }
+  return false;
+};
+
 router.get('/', async (req, res) => {
   const { statut, agentId, fromDate, toDate, keyword } = req.query;
   const trimmedKeyword = typeof keyword === 'string' ? keyword.trim() : '';
@@ -99,13 +118,50 @@ router.get('/', async (req, res) => {
   }
 });
 
+router.get('/:id/report', loadMissionForUser, async (req, res) => {
+  try {
+    const [damages, labors] = await Promise.all([
+      listDamagesByMission(req.params.id),
+      listLaborsByMission(req.params.id),
+    ]);
+    const doc = createMissionReport(req.mission, damages, labors);
+    const filename = `rapport-mission-${req.mission.id}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    doc.pipe(res);
+    doc.on('error', (err) => {
+      console.error('Erreur rapport PDF', err);
+      if (!res.headersSent) {
+        res.status(500).json({ message: 'Impossible de generer le rapport' });
+      } else {
+        res.end();
+      }
+    });
+    doc.end();
+  } catch (error) {
+    console.error('Erreur rapport PDF', error);
+    res.status(500).json({ message: 'Impossible de generer le rapport' });
+  }
+});
+
 router.get('/:id', loadMissionForUser, async (req, res) => {
   try {
-    const [photos, documents] = await Promise.all([
+    const [photos, documents, damagesData, laborData] = await Promise.all([
       listPhotosByMission(req.params.id),
       listDocumentsByMission(req.params.id),
+      listDamagesByMission(req.params.id),
+      listLaborsByMission(req.params.id),
     ]);
-    res.json({ mission: req.mission, photos, documents, photoLabels: PHOTO_LABELS });
+    res.json({
+      mission: req.mission,
+      photos,
+      documents,
+      damages: damagesData.items,
+      damageTotals: damagesData.totals,
+      labors: laborData.entries,
+      laborTotals: laborData.totals,
+      photoLabels: PHOTO_LABELS,
+    });
   } catch (error) {
     res.status(500).json({ message: 'Erreur lors de la recuperation de la mission' });
   }
@@ -339,6 +395,91 @@ router.delete('/:id/photos/:photoId', loadMissionForUser, async (req, res) => {
     res.json({ photos, mission });
   } catch (error) {
     res.status(500).json({ message: 'Erreur lors de la suppression de la photo' });
+  }
+});
+
+router.get('/:id/damages', loadMissionForUser, async (req, res) => {
+  try {
+    const damages = await listDamagesByMission(req.params.id);
+    res.json(damages);
+  } catch (error) {
+    res.status(500).json({ message: 'Impossible de recuperer les dommages' });
+  }
+});
+
+router.post('/:id/damages', loadMissionForUser, async (req, res) => {
+  if (!canEditMission(req)) {
+    return res.status(403).json({ message: 'Acces refuse' });
+  }
+  const { piece, priceHt, vetuste } = req.body || {};
+  try {
+    await addDamage({
+      missionId: req.params.id,
+      piece,
+      priceHt,
+      vetuste,
+    });
+    const damages = await listDamagesByMission(req.params.id);
+    res.status(201).json(damages);
+  } catch (error) {
+    res.status(400).json({ message: error.message || 'Enregistrement impossible' });
+  }
+});
+
+router.put('/:id/damages/:damageId', loadMissionForUser, async (req, res) => {
+  if (!canEditMission(req)) {
+    return res.status(403).json({ message: 'Acces refuse' });
+  }
+  const { piece, priceHt, vetuste } = req.body || {};
+  try {
+    const damage = await getDamageById(req.params.damageId);
+    if (!damage || damage.missionId !== Number(req.params.id)) {
+      return res.status(404).json({ message: 'Element introuvable' });
+    }
+    await updateDamage(damage.id, { piece, priceHt, vetuste });
+    const damages = await listDamagesByMission(req.params.id);
+    res.json(damages);
+  } catch (error) {
+    res.status(400).json({ message: error.message || 'Mise a jour impossible' });
+  }
+});
+
+router.delete('/:id/damages/:damageId', loadMissionForUser, async (req, res) => {
+  if (!canEditMission(req)) {
+    return res.status(403).json({ message: 'Acces refuse' });
+  }
+  try {
+    const damage = await getDamageById(req.params.damageId);
+    if (!damage || damage.missionId !== Number(req.params.id)) {
+      return res.status(404).json({ message: 'Element introuvable' });
+    }
+    await deleteDamage(damage.id);
+    const damages = await listDamagesByMission(req.params.id);
+    res.json(damages);
+  } catch (error) {
+    res.status(500).json({ message: 'Suppression impossible' });
+  }
+});
+
+router.get('/:id/labors', loadMissionForUser, async (req, res) => {
+  try {
+    const data = await listLaborsByMission(req.params.id);
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ message: 'Impossible de recuperer les donnees main d’oeuvre' });
+  }
+});
+
+router.put('/:id/labors', loadMissionForUser, async (req, res) => {
+  if (!canEditMission(req)) {
+    return res.status(403).json({ message: 'Acces refuse' });
+  }
+  const { entries, suppliesHt } = req.body || {};
+  try {
+    const data = await saveLabors(req.params.id, { entries, suppliesHt });
+    res.json(data);
+  } catch (error) {
+    res.status(400).json({ message: error.message || 'Enregistrement impossible' });
   }
 });
 
