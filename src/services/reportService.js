@@ -192,9 +192,51 @@ const addTwoColumnRows = (doc, rows) => {
     doc.y = top;
     addKeyValue(doc, rightLabel, rightValue, colWidth - 20);
     doc.x = doc.page.margins.left;
-    doc.moveDown(0.2);
+    doc.moveDown(0.15);
   });
-  doc.moveDown(0.2);
+  doc.moveDown(0.15);
+};
+
+const addFramedSection = (doc, title, renderContent) => {
+  const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  const frameLeft = doc.page.margins.left - 2;
+  const frameWidth = usableWidth + 4;
+
+  doc.moveDown(0.35);
+  const frameTop = doc.y + 10;
+  const contentTop = frameTop + 6;
+  doc.y = contentTop;
+  doc.x = doc.page.margins.left;
+
+  renderContent();
+  const contentBottom = doc.y + 4;
+  const frameHeight = Math.max(26, contentBottom - frameTop);
+
+  doc
+    .save()
+    .lineWidth(1)
+    .strokeColor('#cbd5f5')
+    .roundedRect(frameLeft, frameTop, frameWidth, frameHeight, 6)
+    .stroke()
+    .restore();
+
+  const titleText = title.toUpperCase();
+  const labelPadding = 6;
+  doc.font('Helvetica-Bold').fontSize(11);
+  const titleWidth = doc.widthOfString(titleText) + labelPadding * 2;
+  const labelX = frameLeft + 10;
+  const labelY = frameTop - 9;
+
+  doc
+    .save()
+    .fillColor('#ffffff')
+    .rect(labelX - labelPadding, labelY - 2, titleWidth, 16)
+    .fill()
+    .restore();
+
+  doc.fillColor('#0f172a').text(titleText, labelX, labelY, { lineBreak: false });
+  doc.y = frameTop + frameHeight;
+  doc.moveDown(0.15);
 };
 
 const addInlineSummaryTable = (doc, items) => {
@@ -203,14 +245,14 @@ const addInlineSummaryTable = (doc, items) => {
   }
   const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const colWidth = usableWidth / items.length;
-  const rowHeight = 24;
+  const rowHeight = 18;
   const startY = doc.y;
   doc
     .lineWidth(0.5)
     .strokeColor('#cbd5f5')
     .rect(doc.page.margins.left, startY, colWidth * items.length, rowHeight)
     .stroke();
-  const textY = startY + rowHeight / 2 - 5;
+  const textY = startY + rowHeight / 2 - 4;
   items.forEach(([label, value], index) => {
     const columnX = doc.page.margins.left + index * colWidth;
     doc
@@ -227,7 +269,7 @@ const addInlineSummaryTable = (doc, items) => {
         continued: false,
       });
   });
-  doc.y = startY + rowHeight + 3;
+  doc.y = startY + rowHeight + 2;
 };
 
 const addTableSection = (doc, headers, rows, firstColumnRatio = 0.2) => {
@@ -236,8 +278,8 @@ const addTableSection = (doc, headers, rows, firstColumnRatio = 0.2) => {
   const colWidths = headers.map((_, index) =>
     index === 0 ? tableWidth * firstColumnRatio : remaining / (headers.length - 1)
   );
-  const headerHeight = 22;
-  const rowHeight = 20;
+  const headerHeight = 20;
+  const rowHeight = 17;
 
   const startY = doc.y;
   doc.save().fillColor('#1d4ed8').rect(doc.page.margins.left, startY, tableWidth, headerHeight).fill();
@@ -290,6 +332,42 @@ const addObservationSection = (doc, mission) => {
   doc.font('Helvetica').fontSize(9).fillColor('#0f172a').text(content, { align: 'left' });
 };
 
+const addSignatureSection = (doc) => {
+  const generationDate = formatDate(new Date().toISOString());
+  const boxWidth = 180;
+  const boxHeight = 55;
+  const spacing = 16;
+  let startY = doc.page.height - doc.page.margins.bottom - (boxHeight + spacing);
+
+  if (doc.y > startY) {
+    doc.addPage();
+    startY = doc.page.height - doc.page.margins.bottom - (boxHeight + spacing);
+  }
+
+  doc.y = startY;
+  doc.x = doc.page.margins.left;
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(9.5)
+    .fillColor('#0f172a')
+    .text(`Fait le : ${generationDate}`);
+
+  doc.moveDown(0.35);
+  const boxX = doc.page.width - doc.page.margins.right - boxWidth;
+  const boxY = doc.y;
+  doc
+    .lineWidth(0.8)
+    .strokeColor('#94a3b8')
+    .rect(boxX, boxY, boxWidth, boxHeight)
+    .stroke();
+  doc
+    .font('Helvetica')
+    .fontSize(8)
+    .fillColor('#475569')
+    .text('Cachet / Signature', boxX + 10, boxY + 8);
+  doc.y = boxY + boxHeight;
+};
+
 const resolveLogo = () => {
   const projectRoot = path.resolve(__dirname, '..', '..', '..');
   const candidates = [
@@ -329,48 +407,53 @@ const createMissionReport = (
   const evaluationTotals = laborData?.totals || {};
   const evaluationTotalTtc = evaluationTotals.grandTotalTtc || 0;
   const indemnisationValue = calculateIndemnisationFinale(mission, evaluationTotals);
-  addSectionTitle(doc, 'Informations principales');
-  addTwoColumnRows(doc, [
-    ['Assureur', mission.assureurNom, 'Contact assureur', mission.assureurContact],
-    ['Agence', mission.assureurAgenceNom, 'Contact agence', mission.assureurAgenceContact],
-    ['Adresse agence', mission.assureurAgenceAdresse, 'Responsable mission', mission.agentLogin],
-  ]);
+  addFramedSection(doc, 'Informations principales', () => {
+    addTwoColumnRows(doc, [
+      ['Assureur', mission.assureurNom, 'Contact assureur', mission.assureurContact],
+      ['Agence', mission.assureurAgenceNom, 'Contact agence', mission.assureurAgenceContact],
+      ['Adresse agence', mission.assureurAgenceAdresse, 'Responsable mission', mission.agentLogin],
+    ]);
+  });
 
-  addSectionTitle(doc, 'Assure');
-  addTwoColumnRows(doc, [
-    ['Nom', mission.assureNom, 'Telephone', mission.assureTelephone],
-    ['Email', mission.assureEmail, 'Statut', mission.statut],
-  ]);
+  addFramedSection(doc, 'Assure', () => {
+    addTwoColumnRows(doc, [
+      ['Nom', mission.assureNom, 'Telephone', mission.assureTelephone],
+      ['Email', mission.assureEmail, 'Statut', mission.statut],
+    ]);
+  });
 
-  addSectionTitle(doc, 'Vehicule');
-  addTwoColumnRows(doc, [
-    ['Marque', mission.vehiculeMarque, 'Modele', mission.vehiculeModele],
-    ['Immatriculation', mission.vehiculeImmatriculation, 'Date de mise en circulation', formatDate(mission.vehiculeAnnee)],
-    ['Numero de chassis (VIN)', mission.vehiculeVin, 'Kilometrage', formatKilometrage(mission.vehiculeKilometrage)],
-    ['Puissance fiscale', mission.vehiculePuissanceFiscale, 'Energie', formatEnergyLabel(mission.vehiculeEnergie)],
-  ]);
+  addFramedSection(doc, 'Vehicule', () => {
+    addTwoColumnRows(doc, [
+      ['Marque', mission.vehiculeMarque, 'Modele', mission.vehiculeModele],
+      ['Immatriculation', mission.vehiculeImmatriculation, 'Date de mise en circulation', formatDate(mission.vehiculeAnnee)],
+      ['Numero de chassis (VIN)', mission.vehiculeVin, 'Kilometrage', formatKilometrage(mission.vehiculeKilometrage)],
+      ['Puissance fiscale', mission.vehiculePuissanceFiscale, 'Energie', formatEnergyLabel(mission.vehiculeEnergie)],
+    ]);
+  });
 
-  addSectionTitle(doc, 'Sinistre');
-  addTwoColumnRows(doc, [
-    ['Code sinistre', mission.sinistreType, 'Date', formatDate(mission.sinistreDate)],
-    ['Police', mission.sinistrePolice, 'Police vehicule adverse', mission.sinistrePoliceAdverse],
-    ['Nom & prenom adverse', mission.sinistreNomAdverse, 'Immatriculation adverse', mission.sinistreImmatriculationAdverse],
-    ['Compagnie adverse', mission.assureurAdverseNom, 'Circonstances', mission.sinistreCirconstances],
-  ]);
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(9)
-    .fillColor('#1f2933')
-    .text('Observations :', { continued: true })
-    .font('Helvetica')
-    .fillColor('#0f172a')
-    .text(` ${safeValue(mission.sinistreCirconstances)}`);
+  addFramedSection(doc, 'Sinistre', () => {
+    addTwoColumnRows(doc, [
+      ['Code sinistre', mission.sinistreType, 'Date', formatDate(mission.sinistreDate)],
+      ['Police', mission.sinistrePolice, 'Police vehicule adverse', mission.sinistrePoliceAdverse],
+      ['Nom & prenom adverse', mission.sinistreNomAdverse, 'Immatriculation adverse', mission.sinistreImmatriculationAdverse],
+      ['Compagnie adverse', mission.assureurAdverseNom, 'Circonstances', mission.sinistreCirconstances],
+    ]);
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(9)
+      .fillColor('#1f2933')
+      .text('Observations :', { continued: true })
+      .font('Helvetica')
+      .fillColor('#0f172a')
+      .text(` ${safeValue(mission.sinistreCirconstances)}`);
+  });
 
-  addSectionTitle(doc, 'Garage');
-  addTwoColumnRows(doc, [
-    ['Garage', mission.garageNom, 'Contact garage', mission.garageContact],
-    ['Adresse garage', mission.garageAdresse, '', ''],
-  ]);
+  addFramedSection(doc, 'Garage', () => {
+    addTwoColumnRows(doc, [
+      ['Garage', mission.garageNom, 'Contact garage', mission.garageContact],
+      ['Adresse garage', mission.garageAdresse, '', ''],
+    ]);
+  });
 
   if (laborData.entries && laborData.entries.length) {
     addSectionTitle(doc, 'Evaluation de la remise en etat');
@@ -454,6 +537,7 @@ const createMissionReport = (
   }
 
   if (damageData.items && damageData.items.length) {
+    addSignatureSection(doc);
     doc.addPage();
     addSectionTitle(doc, 'Description des dommages');
     const damageRows = damageData.items.map((item) => {
@@ -500,8 +584,10 @@ const createMissionReport = (
       0.22
     );
     addObservationSection(doc, mission);
+    addSignatureSection(doc);
   } else {
     addObservationSection(doc, mission);
+    addSignatureSection(doc);
   }
 
   return doc;
