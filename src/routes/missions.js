@@ -411,13 +411,15 @@ router.post('/:id/damages', loadMissionForUser, async (req, res) => {
   if (!canEditMission(req)) {
     return res.status(403).json({ message: 'Acces refuse' });
   }
-  const { piece, priceHt, vetuste } = req.body || {};
+  const { piece, priceHt, vetuste, pieceType, withVat } = req.body || {};
   try {
     await addDamage({
       missionId: req.params.id,
       piece,
       priceHt,
       vetuste,
+      pieceType,
+      withVat,
     });
     const damages = await listDamagesByMission(req.params.id);
     res.status(201).json(damages);
@@ -430,13 +432,13 @@ router.put('/:id/damages/:damageId', loadMissionForUser, async (req, res) => {
   if (!canEditMission(req)) {
     return res.status(403).json({ message: 'Acces refuse' });
   }
-  const { piece, priceHt, vetuste } = req.body || {};
+  const { piece, priceHt, vetuste, pieceType, withVat } = req.body || {};
   try {
     const damage = await getDamageById(req.params.damageId);
     if (!damage || damage.missionId !== Number(req.params.id)) {
       return res.status(404).json({ message: 'Element introuvable' });
     }
-    await updateDamage(damage.id, { piece, priceHt, vetuste });
+    await updateDamage(damage.id, { piece, priceHt, vetuste, pieceType, withVat });
     const damages = await listDamagesByMission(req.params.id);
     res.json(damages);
   } catch (error) {

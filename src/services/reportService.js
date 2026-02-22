@@ -27,6 +27,138 @@ const formatCurrency = (value) => {
   return `${amount.toFixed(2)} MAD`;
 };
 
+const ENERGY_LABELS = {
+  diesel: 'Diesel',
+  essence: 'Essence',
+  electrique: 'Electrique',
+  hybride: 'Hybride',
+};
+
+const DAMAGE_TYPE_LABELS = {
+  original: 'Original',
+  reparation: 'Reparation',
+  reccuperation: 'Reccuperation',
+  adaptation: 'Adaptation',
+  produit_peinture: 'Produit peinture',
+};
+
+const formatKilometrage = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return '-';
+  }
+  const numeric = Number(value);
+  const formatted = Number.isFinite(numeric) ? numeric.toLocaleString('fr-FR') : value;
+  return `${formatted} km`;
+};
+
+const formatEnergyLabel = (value) => {
+  if (!value) {
+    return '-';
+  }
+  const normalized = String(value).trim().toLowerCase();
+  return ENERGY_LABELS[normalized] || value;
+};
+
+const formatDamageTypeLabel = (value) => {
+  if (!value) {
+    return '-';
+  }
+  const normalized = String(value).trim().toLowerCase();
+  return DAMAGE_TYPE_LABELS[normalized] || value;
+};
+
+const formatVatChoice = (value) => (value ? 'Oui' : 'Non');
+
+const GUARANTEE_LABELS = {
+  'dommage collision': 'Dommage collision',
+  tierce: 'Tierce',
+  rc: 'RC',
+};
+
+const guaranteeRequiresFranchise = (value) => {
+  if (!value) {
+    return false;
+  }
+  const normalized = String(value).trim().toLowerCase();
+  return normalized === 'dommage collision' || normalized === 'tierce';
+};
+
+const formatGuaranteeType = (value) => {
+  if (!value) {
+    return '-';
+  }
+  const normalized = String(value).trim().toLowerCase();
+  return GUARANTEE_LABELS[normalized] || value;
+};
+
+const formatFranchiseRate = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return '-';
+  }
+  const numeric = Number(value);
+  const display = Number.isFinite(numeric) ? numeric.toFixed(2) : value;
+  return `${display} %`;
+};
+
+const formatFranchiseAmount = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return '-';
+  }
+  const numeric = Number(value);
+  const display = Number.isFinite(numeric) ? numeric.toFixed(2) : value;
+  return `${display} MAD`;
+};
+
+const formatResponsabilite = (value) => {
+  if (!value) {
+    return '-';
+  }
+  return value;
+};
+
+const REFORME_LABELS = {
+  economique: 'Economique',
+  technique: 'Technique',
+};
+
+const formatReformeType = (value) => {
+  if (!value) {
+    return '-';
+  }
+  const normalized = String(value).trim().toLowerCase();
+  return REFORME_LABELS[normalized] || value;
+};
+
+const formatPlainNumber = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return '-';
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric.toFixed(2) : String(value);
+};
+
+const calculateFranchiseAmount = (mission, evaluationTotalTtc) => {
+  if (!mission) {
+    return 0;
+  }
+  const rate = Number(mission.garantieFranchiseTaux) || 0;
+  const fixed = Number(mission.garantieFranchiseMontant) || 0;
+  const percentValue = (rate / 100) * evaluationTotalTtc;
+  return Math.max(percentValue, fixed);
+};
+
+const calculateIndemnisationFinale = (mission, laborTotals) => {
+  const base = laborTotals?.grandTotalTtc || 0;
+  if (mission && mission.indemnisationFinale !== undefined && mission.indemnisationFinale !== null) {
+    const stored = Number(mission.indemnisationFinale);
+    return Number.isNaN(stored) ? Math.max(0, base) : stored;
+  }
+  const franchiseAmount = calculateFranchiseAmount(mission, base);
+  return Math.max(0, base - franchiseAmount);
+};
+
+
+
 const addSectionTitle = (doc, title) => {
   doc.x = doc.page.margins.left;
   doc.moveDown(0.4);
@@ -63,6 +195,39 @@ const addTwoColumnRows = (doc, rows) => {
     doc.moveDown(0.2);
   });
   doc.moveDown(0.2);
+};
+
+const addInlineSummaryTable = (doc, items) => {
+  if (!items || !items.length) {
+    return;
+  }
+  const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  const colWidth = usableWidth / items.length;
+  const rowHeight = 24;
+  const startY = doc.y;
+  doc
+    .lineWidth(0.5)
+    .strokeColor('#cbd5f5')
+    .rect(doc.page.margins.left, startY, colWidth * items.length, rowHeight)
+    .stroke();
+  const textY = startY + rowHeight / 2 - 5;
+  items.forEach(([label, value], index) => {
+    const columnX = doc.page.margins.left + index * colWidth;
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(8.5)
+      .fillColor('#1f2933')
+      .text(`${label} : `, columnX + 4, textY, {
+        width: colWidth - 8,
+        continued: true,
+      })
+      .font('Helvetica')
+      .fillColor('#0f172a')
+      .text(`${safeValue(value)}`, {
+        continued: false,
+      });
+  });
+  doc.y = startY + rowHeight + 3;
 };
 
 const addTableSection = (doc, headers, rows, firstColumnRatio = 0.2) => {
@@ -113,35 +278,16 @@ const addTableSection = (doc, headers, rows, firstColumnRatio = 0.2) => {
   doc.x = doc.page.margins.left;
 };
 
-const moveSectionNearBottom = (doc, offset = 120) => {
-  const targetY = doc.page.height - doc.page.margins.bottom - offset;
-  if (doc.y < targetY) {
-    const lineHeight = doc.currentLineHeight();
-    const linesToMove = Math.ceil((targetY - doc.y) / lineHeight);
-    doc.moveDown(linesToMove);
-  }
-};
-
-const addSyntheseSection = (doc, mission) => {
-  moveSectionNearBottom(doc, 130);
-  addSectionTitle(doc, 'Synthese');
-  doc
-    .font('Helvetica')
-    .fontSize(9)
-    .fillColor('#0f172a')
-    .text(
-      `Ce rapport regroupe les informations communiquees le ${formatDate(
-        mission.updatedAt || mission.createdAt
-      )}. Il est destine a servir de support pour la redaction finale du rapport d'expertise.`
-    );
+const addObservationSection = (doc, mission) => {
   doc.moveDown(0.6);
-  doc
-    .font('Helvetica-Oblique')
-    .fontSize(8.5)
-    .fillColor('#475569')
-    .text('Ce rapport a ete genere automatiquement a partir des informations saisies dans Gestion Missions Auto.', {
-      align: 'left',
-    });
+  addSectionTitle(doc, 'Observations');
+  const content =
+    typeof mission.synthese === 'string' && mission.synthese.trim().length
+      ? mission.synthese.trim()
+      : `Ce rapport regroupe les informations communiquees le ${formatDate(
+          mission.updatedAt || mission.createdAt
+        )}. Il est destine a servir de support pour la redaction finale du rapport d'expertise.`;
+  doc.font('Helvetica').fontSize(9).fillColor('#0f172a').text(content, { align: 'left' });
 };
 
 const resolveLogo = () => {
@@ -173,8 +319,16 @@ const createMissionReport = (
 
   doc.fontSize(18).font('Helvetica-Bold').fillColor('#0f172a').text('Rapport d\'expertise', { align: 'right' });
   doc.fontSize(10).font('Helvetica').fillColor('#475569').text(`Mission #${mission.id}`, { align: 'right' });
+  doc.fontSize(9).font('Helvetica').fillColor('#475569').text(
+    `N° immatriculation : ${mission.vehiculeImmatriculation || '-'}`,
+    { align: 'right' }
+  );
   doc.moveDown(0.5);
 
+  const damageVetusteLoss = Math.max(0, (damageData.totals?.totalTtc || 0) - (damageData.totals?.totalAfterTtc || 0));
+  const evaluationTotals = laborData?.totals || {};
+  const evaluationTotalTtc = evaluationTotals.grandTotalTtc || 0;
+  const indemnisationValue = calculateIndemnisationFinale(mission, evaluationTotals);
   addSectionTitle(doc, 'Informations principales');
   addTwoColumnRows(doc, [
     ['Assureur', mission.assureurNom, 'Contact assureur', mission.assureurContact],
@@ -192,12 +346,15 @@ const createMissionReport = (
   addTwoColumnRows(doc, [
     ['Marque', mission.vehiculeMarque, 'Modele', mission.vehiculeModele],
     ['Immatriculation', mission.vehiculeImmatriculation, 'Date de mise en circulation', formatDate(mission.vehiculeAnnee)],
+    ['Numero de chassis (VIN)', mission.vehiculeVin, 'Kilometrage', formatKilometrage(mission.vehiculeKilometrage)],
+    ['Puissance fiscale', mission.vehiculePuissanceFiscale, 'Energie', formatEnergyLabel(mission.vehiculeEnergie)],
   ]);
 
   addSectionTitle(doc, 'Sinistre');
   addTwoColumnRows(doc, [
     ['Code sinistre', mission.sinistreType, 'Date', formatDate(mission.sinistreDate)],
     ['Police', mission.sinistrePolice, 'Police vehicule adverse', mission.sinistrePoliceAdverse],
+    ['Nom & prenom adverse', mission.sinistreNomAdverse, 'Immatriculation adverse', mission.sinistreImmatriculationAdverse],
     ['Compagnie adverse', mission.assureurAdverseNom, 'Circonstances', mission.sinistreCirconstances],
   ]);
   doc
@@ -251,6 +408,22 @@ const createMissionReport = (
         formatCurrency(totals.totalTva),
         formatCurrency(totals.grandTotalTtc),
       ],
+      [
+        'Vetuste TTC',
+        '',
+        '',
+        '',
+        '',
+        formatCurrency(damageVetusteLoss),
+      ],
+      [
+        'Indemnisation finale',
+        '',
+        '',
+        '',
+        '',
+        formatCurrency(indemnisationValue),
+      ],
     ];
 
     addTableSection(
@@ -259,20 +432,42 @@ const createMissionReport = (
       [...laborRows, ...summaryRows],
       0.28
     );
-  }
 
-  addSyntheseSection(doc, mission);
+    const guaranteeItems = [
+      ['Type de garantie', formatGuaranteeType(mission.garantieType)],
+    ];
+    if (guaranteeRequiresFranchise(mission.garantieType)) {
+      guaranteeItems.push(
+        ['Taux franchise', formatFranchiseRate(mission.garantieFranchiseTaux)],
+        ['Franchise (MAD)', formatFranchiseAmount(mission.garantieFranchiseMontant)]
+      );
+    }
+    addInlineSummaryTable(doc, guaranteeItems);
+    addInlineSummaryTable(doc, [['Responsabilite', formatResponsabilite(mission.responsabilite)]]);
+    addInlineSummaryTable(doc, [
+      ['Reforme', formatReformeType(mission.reformeType)],
+      ['Valeur assuree', formatPlainNumber(mission.valeurAssuree)],
+      ['Valeur venale', formatPlainNumber(mission.valeurVenale)],
+      ['Valeur epaves', formatPlainNumber(mission.valeurEpaves)],
+    ]);
+    doc.moveDown(0.3);
+  }
 
   if (damageData.items && damageData.items.length) {
     doc.addPage();
     addSectionTitle(doc, 'Description des dommages');
     const damageRows = damageData.items.map((item) => {
-      const priceTtc = (item.priceHt || 0) * 1.2;
+      const priceTtc =
+        item.priceTtc !== undefined
+          ? item.priceTtc
+          : (item.priceHt || 0) * (item.withVat ? 1.2 : 1);
       return [
         item.piece,
+        formatDamageTypeLabel(item.pieceType),
         `${(item.priceHt || 0).toFixed(2)} HT`,
         `${(item.vetuste || 0).toFixed(0)} %`,
         `${(item.priceAfter || 0).toFixed(2)} HT`,
+        formatVatChoice(item.withVat),
         `${priceTtc.toFixed(2)} TTC`,
       ];
     });
@@ -281,25 +476,32 @@ const createMissionReport = (
       [
         'Total dommages',
         '',
-        '',
         formatCurrency(totals.totalHt),
+        '',
+        '',
+        '',
         formatCurrency(totals.totalTtc),
       ],
       [
         'Apres vetuste',
         '',
         '',
+        '',
         formatCurrency(totals.totalAfter),
+        '',
         formatCurrency(totals.totalAfterTtc),
       ],
     ];
 
     addTableSection(
       doc,
-      ['Piece', 'Prix HT', 'Vetuste', 'Apres vetuste', 'Prix TTC'],
+      ['Piece', 'Type', 'Prix HT', 'Vetuste', 'Apres vetuste', 'TVA', 'Prix TTC'],
       [...damageRows, ...summaryRows],
-      0.3
+      0.22
     );
+    addObservationSection(doc, mission);
+  } else {
+    addObservationSection(doc, mission);
   }
 
   return doc;
@@ -308,3 +510,26 @@ const createMissionReport = (
 module.exports = {
   createMissionReport,
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

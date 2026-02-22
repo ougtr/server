@@ -40,17 +40,48 @@ const mapMission = (mission) => {
     vehiculeModele: mission.vehicule_modele,
     vehiculeImmatriculation: mission.vehicule_immatriculation,
     vehiculeAnnee: mission.vehicule_annee !== null ? String(mission.vehicule_annee) : null,
+    vehiculeVin: mission.vehicule_vin || null,
+    vehiculeKilometrage:
+      mission.vehicule_kilometrage !== null && mission.vehicule_kilometrage !== undefined
+        ? Number(mission.vehicule_kilometrage)
+        : null,
+    vehiculePuissanceFiscale: mission.vehicule_puissance_fiscale || null,
+    vehiculeEnergie: mission.vehicule_energie || null,
     sinistreType: mission.sinistre_type,
     sinistreCirconstances: mission.sinistre_circonstances,
     sinistreDate: mission.sinistre_date,
     sinistrePolice: mission.sinistre_police,
     sinistrePoliceAdverse: mission.sinistre_police_adverse,
+    sinistreNomAdverse: mission.sinistre_nom_adverse || null,
+    sinistreImmatriculationAdverse: mission.sinistre_immatriculation_adverse || null,
     garageId: mission.garage_id !== null ? Number(mission.garage_id) : null,
     garageNom,
     garageAdresse,
     garageContact,
     assureurAdverseId: mission.assureur_adverse_id !== null ? Number(mission.assureur_adverse_id) : null,
     assureurAdverseNom: mission.assureur_adverse_nom || null,
+    garantieType: mission.garantie_type || null,
+    garantieFranchiseTaux:
+      mission.garantie_franchise_taux !== null && mission.garantie_franchise_taux !== undefined
+        ? Number(mission.garantie_franchise_taux)
+        : null,
+    garantieFranchiseMontant:
+      mission.garantie_franchise_montant !== null && mission.garantie_franchise_montant !== undefined
+        ? Number(mission.garantie_franchise_montant)
+        : null,
+    responsabilite: mission.responsabilite || null,
+    reformeType: mission.reforme_type || null,
+    valeurAssuree:
+      mission.valeur_assuree !== null && mission.valeur_assuree !== undefined ? Number(mission.valeur_assuree) : null,
+    valeurVenale:
+      mission.valeur_venale !== null && mission.valeur_venale !== undefined ? Number(mission.valeur_venale) : null,
+    valeurEpaves:
+      mission.valeur_epaves !== null && mission.valeur_epaves !== undefined ? Number(mission.valeur_epaves) : null,
+    indemnisationFinale:
+      mission.indemnisation_finale !== null && mission.indemnisation_finale !== undefined
+        ? Number(mission.indemnisation_finale)
+        : null,
+    synthese: mission.synthese || null,
     agentId: mission.agent_id !== null ? Number(mission.agent_id) : null,
     agentLogin: mission.agent_login,
     statut: mission.statut,
@@ -192,9 +223,16 @@ const listMissions = async ({ role, userId, filters = {}, pagination = {} }) => 
       'missions.vehicule_marque',
       'missions.vehicule_modele',
       'missions.vehicule_immatriculation',
+      'missions.vehicule_vin',
+      'missions.vehicule_kilometrage',
+      'missions.vehicule_puissance_fiscale',
+      'missions.vehicule_energie',
       'missions.sinistre_type',
       'missions.sinistre_circonstances',
       'missions.sinistre_police',
+      'missions.sinistre_police_adverse',
+      'missions.sinistre_nom_adverse',
+      'missions.sinistre_immatriculation_adverse',
       'missions.garage_nom',
       'missions.garage_adresse',
       'missions.garage_contact',
@@ -307,11 +345,27 @@ const createMission = async (payload, currentUserId) => {
     vehiculeModele,
     vehiculeImmatriculation,
     vehiculeAnnee,
+    vehiculeVin,
+    vehiculeKilometrage,
+    vehiculePuissanceFiscale,
+    vehiculeEnergie,
     sinistreType,
     sinistreCirconstances,
     sinistreDate,
     sinistrePolice,
     sinistrePoliceAdverse,
+    sinistreNomAdverse,
+    sinistreImmatriculationAdverse,
+    garantieType,
+    garantieFranchiseTaux,
+    garantieFranchiseMontant,
+    responsabilite,
+    reformeType,
+    valeurAssuree,
+    valeurVenale,
+    valeurEpaves,
+    indemnisationFinale,
+    synthese,
 
     garageId,
     agentId,
@@ -355,7 +409,96 @@ const createMission = async (payload, currentUserId) => {
     typeof sinistrePoliceAdverse === 'string' ? sinistrePoliceAdverse.trim() : sinistrePoliceAdverse;
   const adversePoliceValue =
     normalizedAdversePolice && normalizedAdversePolice !== '' ? normalizedAdversePolice : null;
+  const normalizedAdverseName = typeof sinistreNomAdverse === 'string' ? sinistreNomAdverse.trim() : sinistreNomAdverse;
+  const adverseNameValue =
+    normalizedAdverseName && normalizedAdverseName !== '' ? normalizedAdverseName : null;
+  const normalizedAdversePlate =
+    typeof sinistreImmatriculationAdverse === 'string' ? sinistreImmatriculationAdverse.trim() : sinistreImmatriculationAdverse;
+  const adversePlateValue =
+    normalizedAdversePlate && normalizedAdversePlate !== '' ? normalizedAdversePlate : null;
   const circulationDate = normalizeCirculationDate(vehiculeAnnee);
+  const vinValue =
+    typeof vehiculeVin === 'string'
+      ? vehiculeVin.trim() || null
+      : vehiculeVin !== undefined && vehiculeVin !== null
+      ? String(vehiculeVin)
+      : null;
+  let kilometrageValue =
+    vehiculeKilometrage === undefined || vehiculeKilometrage === null || vehiculeKilometrage === ''
+      ? null
+      : Number(vehiculeKilometrage);
+  if (kilometrageValue !== null && Number.isNaN(kilometrageValue)) {
+    kilometrageValue = null;
+  }
+  const puissanceValue =
+    typeof vehiculePuissanceFiscale === 'string'
+      ? vehiculePuissanceFiscale.trim() || null
+      : vehiculePuissanceFiscale !== undefined && vehiculePuissanceFiscale !== null
+      ? String(vehiculePuissanceFiscale)
+      : null;
+  const energieValue =
+    typeof vehiculeEnergie === 'string'
+      ? vehiculeEnergie.trim() || null
+      : vehiculeEnergie !== undefined && vehiculeEnergie !== null
+      ? String(vehiculeEnergie)
+      : null;
+  const garantieTypeValue =
+    typeof garantieType === 'string'
+      ? garantieType.trim() || null
+      : garantieType !== undefined && garantieType !== null
+      ? String(garantieType)
+      : null;
+  let franchiseTauxValue =
+    garantieFranchiseTaux === undefined || garantieFranchiseTaux === null || garantieFranchiseTaux === ''
+      ? null
+      : Number(garantieFranchiseTaux);
+  if (franchiseTauxValue !== null && Number.isNaN(franchiseTauxValue)) {
+    franchiseTauxValue = null;
+  }
+  let franchiseMontantValue =
+    garantieFranchiseMontant === undefined ||
+    garantieFranchiseMontant === null ||
+    garantieFranchiseMontant === ''
+      ? null
+      : Number(garantieFranchiseMontant);
+  if (franchiseMontantValue !== null && Number.isNaN(franchiseMontantValue)) {
+    franchiseMontantValue = null;
+  }
+  const guaranteeRequiresFranchise =
+    garantieTypeValue && ['dommage collision', 'tierce'].includes(garantieTypeValue.toLowerCase());
+  if (!guaranteeRequiresFranchise) {
+    franchiseTauxValue = null;
+    franchiseMontantValue = null;
+  }
+  const responsabiliteValue =
+    typeof responsabilite === 'string'
+      ? responsabilite.trim() || null
+      : responsabilite !== undefined && responsabilite !== null
+      ? String(responsabilite)
+      : null;
+  const reformeTypeValue =
+    typeof reformeType === 'string'
+      ? reformeType.trim() || null
+      : reformeType !== undefined && reformeType !== null
+      ? String(reformeType)
+      : null;
+  const normalizeAmount = (value) => {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+    const numeric = Number(value);
+    return Number.isNaN(numeric) ? null : numeric;
+  };
+  const valeurAssureeValue = normalizeAmount(valeurAssuree);
+  const valeurVenaleValue = normalizeAmount(valeurVenale);
+  const valeurEpavesValue = normalizeAmount(valeurEpaves);
+  const syntheseValue =
+    typeof synthese === 'string'
+      ? synthese.trim() || null
+      : synthese !== undefined && synthese !== null
+      ? String(synthese)
+      : null;
+  const indemnisationValue = normalizeAmount(indemnisationFinale);
 
   const result = await run(
     `INSERT INTO missions (
@@ -374,11 +517,17 @@ const createMission = async (payload, currentUserId) => {
       vehicule_modele,
       vehicule_immatriculation,
       vehicule_annee,
+      vehicule_vin,
+      vehicule_kilometrage,
+      vehicule_puissance_fiscale,
+      vehicule_energie,
       sinistre_type,
       sinistre_circonstances,
       sinistre_date,
       sinistre_police,
       sinistre_police_adverse,
+      sinistre_nom_adverse,
+      sinistre_immatriculation_adverse,
       garage_nom,
       garage_adresse,
       garage_contact,
@@ -387,9 +536,21 @@ const createMission = async (payload, currentUserId) => {
       vehicule_marque_id,
       garage_id,
       labor_supplies_ht,
+      garantie_type,
+      garantie_franchise_taux,
+      garantie_franchise_montant,
+      responsabilite,
+      reforme_type,
+      valeur_assuree,
+      valeur_venale,
+      valeur_epaves,
+      indemnisation_finale,
+      synthese,
       statut,
       created_by
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    )`,
     [
       insurer.nom,
       insurer.contact || null,
@@ -406,11 +567,17 @@ const createMission = async (payload, currentUserId) => {
       vehiculeModele,
       vehiculeImmatriculation,
       circulationDate,
+      vinValue,
+      kilometrageValue,
+      puissanceValue,
+      energieValue,
       sinistreType,
       sinistreCirconstances,
       sinistreDate,
       policeValue,
       adversePoliceValue,
+      adverseNameValue,
+      adversePlateValue,
       garage ? garage.nom : null,
       garage ? garage.adresse : null,
       garage ? garage.contact : null,
@@ -419,6 +586,16 @@ const createMission = async (payload, currentUserId) => {
       brand.id,
       garage ? garage.id : null,
       0,
+      garantieTypeValue,
+      franchiseTauxValue,
+      franchiseMontantValue,
+      responsabiliteValue,
+      reformeTypeValue,
+      valeurAssureeValue,
+      valeurVenaleValue,
+      valeurEpavesValue,
+      indemnisationValue,
+      syntheseValue,
       initialStatus,
       currentUserId,
     ]
@@ -551,11 +728,134 @@ const updateMission = async (id, payload) => {
   if (Object.prototype.hasOwnProperty.call(payload, 'vehiculeModele')) pushUpdate('vehicule_modele', payload.vehiculeModele);
   if (Object.prototype.hasOwnProperty.call(payload, 'vehiculeImmatriculation')) pushUpdate('vehicule_immatriculation', payload.vehiculeImmatriculation);
   if (Object.prototype.hasOwnProperty.call(payload, 'vehiculeAnnee')) pushUpdate('vehicule_annee', normalizeCirculationDate(payload.vehiculeAnnee));
+  if (Object.prototype.hasOwnProperty.call(payload, 'vehiculeVin')) pushUpdate('vehicule_vin', payload.vehiculeVin);
+  if (Object.prototype.hasOwnProperty.call(payload, 'vehiculeKilometrage')) {
+    const rawKm = payload.vehiculeKilometrage;
+    let kmValue;
+    if (rawKm === '' || rawKm === null || rawKm === undefined) {
+      kmValue = null;
+    } else {
+      kmValue = Number(rawKm);
+      if (Number.isNaN(kmValue)) {
+        kmValue = null;
+      }
+    }
+    pushUpdate('vehicule_kilometrage', kmValue);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'vehiculePuissanceFiscale')) {
+    pushUpdate('vehicule_puissance_fiscale', payload.vehiculePuissanceFiscale);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'vehiculeEnergie')) {
+    pushUpdate('vehicule_energie', payload.vehiculeEnergie);
+  }
   if (Object.prototype.hasOwnProperty.call(payload, 'sinistreType')) pushUpdate('sinistre_type', payload.sinistreType);
   if (Object.prototype.hasOwnProperty.call(payload, 'sinistreCirconstances')) pushUpdate('sinistre_circonstances', payload.sinistreCirconstances);
   if (Object.prototype.hasOwnProperty.call(payload, 'sinistreDate')) pushUpdate('sinistre_date', payload.sinistreDate);
   if (Object.prototype.hasOwnProperty.call(payload, 'sinistrePolice')) pushUpdate('sinistre_police', payload.sinistrePolice);
   if (Object.prototype.hasOwnProperty.call(payload, 'sinistrePoliceAdverse')) pushUpdate('sinistre_police_adverse', payload.sinistrePoliceAdverse);
+  if (Object.prototype.hasOwnProperty.call(payload, 'sinistreNomAdverse')) pushUpdate('sinistre_nom_adverse', payload.sinistreNomAdverse);
+  if (Object.prototype.hasOwnProperty.call(payload, 'sinistreImmatriculationAdverse')) pushUpdate('sinistre_immatriculation_adverse', payload.sinistreImmatriculationAdverse);
+  let nextGuaranteeType;
+  if (Object.prototype.hasOwnProperty.call(payload, 'garantieType')) {
+    const rawType = payload.garantieType;
+    if (rawType === null || rawType === undefined) {
+      nextGuaranteeType = null;
+    } else if (typeof rawType === 'string') {
+      nextGuaranteeType = rawType.trim() || null;
+    } else {
+      nextGuaranteeType = String(rawType);
+    }
+    pushUpdate('garantie_type', nextGuaranteeType);
+    const requiresFranchise =
+      nextGuaranteeType && ['dommage collision', 'tierce'].includes(nextGuaranteeType.toLowerCase());
+    if (!requiresFranchise) {
+      pushUpdate('garantie_franchise_taux', null);
+      pushUpdate('garantie_franchise_montant', null);
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'garantieFranchiseTaux')) {
+    const rawRate = payload.garantieFranchiseTaux;
+    let rateValue;
+    if (rawRate === '' || rawRate === null || rawRate === undefined) {
+      rateValue = null;
+    } else {
+      rateValue = Number(rawRate);
+      if (Number.isNaN(rateValue)) {
+        rateValue = null;
+      }
+    }
+    pushUpdate('garantie_franchise_taux', rateValue);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'garantieFranchiseMontant')) {
+    const rawAmount = payload.garantieFranchiseMontant;
+    let amountValue;
+    if (rawAmount === '' || rawAmount === null || rawAmount === undefined) {
+      amountValue = null;
+    } else {
+      amountValue = Number(rawAmount);
+      if (Number.isNaN(amountValue)) {
+        amountValue = null;
+      }
+    }
+    pushUpdate('garantie_franchise_montant', amountValue);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'responsabilite')) pushUpdate('responsabilite', payload.responsabilite);
+  if (Object.prototype.hasOwnProperty.call(payload, 'reformeType')) {
+    const rawType = payload.reformeType;
+    if (rawType === null || rawType === undefined) {
+      pushUpdate('reforme_type', null);
+    } else if (typeof rawType === 'string') {
+      pushUpdate('reforme_type', rawType.trim() || null);
+    } else {
+      pushUpdate('reforme_type', String(rawType));
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'valeurAssuree')) {
+    const amount = payload.valeurAssuree;
+    let normalized = null;
+    if (amount !== '' && amount !== null && amount !== undefined) {
+      const numeric = Number(amount);
+      normalized = Number.isNaN(numeric) ? null : numeric;
+    }
+    pushUpdate('valeur_assuree', normalized);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'valeurVenale')) {
+    const amount = payload.valeurVenale;
+    let normalized = null;
+    if (amount !== '' && amount !== null && amount !== undefined) {
+      const numeric = Number(amount);
+      normalized = Number.isNaN(numeric) ? null : numeric;
+    }
+    pushUpdate('valeur_venale', normalized);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'valeurEpaves')) {
+    const amount = payload.valeurEpaves;
+    let normalized = null;
+    if (amount !== '' && amount !== null && amount !== undefined) {
+      const numeric = Number(amount);
+      normalized = Number.isNaN(numeric) ? null : numeric;
+    }
+    pushUpdate('valeur_epaves', normalized);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'indemnisationFinale')) {
+    const amount = payload.indemnisationFinale;
+    let normalized = null;
+    if (amount !== '' && amount !== null && amount !== undefined) {
+      const numeric = Number(amount);
+      normalized = Number.isNaN(numeric) ? null : numeric;
+    }
+    pushUpdate('indemnisation_finale', normalized);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'synthese')) {
+    const text = payload.synthese;
+    if (text === null || text === undefined) {
+      pushUpdate('synthese', null);
+    } else if (typeof text === 'string') {
+      pushUpdate('synthese', text.trim() || null);
+    } else {
+      pushUpdate('synthese', String(text));
+    }
+  }
   if (assigneeIdValue !== undefined) pushUpdate('agent_id', assigneeIdValue);
   if (Object.prototype.hasOwnProperty.call(payload, 'statut')) pushUpdate('statut', payload.statut);
 
