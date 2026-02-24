@@ -84,6 +84,7 @@ const initializeDatabase = async () => {
   await run(`
     CREATE TABLE IF NOT EXISTS missions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      mission_code TEXT,
       assureur_nom TEXT NOT NULL,
       assureur_contact TEXT,
       assure_nom TEXT NOT NULL,
@@ -127,6 +128,7 @@ const initializeDatabase = async () => {
       assureur_adverse_nom TEXT,
       vehicule_marque_id INTEGER,
       garage_id INTEGER,
+      labor_supplies_ttc REAL DEFAULT 0,
       statut TEXT NOT NULL DEFAULT 'cree' CHECK (statut IN ('cree', 'affectee', 'en_cours', 'terminee')),
       created_by INTEGER,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -230,6 +232,14 @@ const initializeDatabase = async () => {
   }
 
   try {
+    await run('ALTER TABLE missions ADD COLUMN mission_code TEXT');
+  } catch (error) {
+    if (!String(error.message).includes('duplicate column name')) {
+      throw error;
+    }
+  }
+
+  try {
     await run('ALTER TABLE missions ADD COLUMN assureur_id INTEGER');
   } catch (error) {
     if (!String(error.message).includes('duplicate column name')) {
@@ -247,6 +257,13 @@ const initializeDatabase = async () => {
 
   try {
     await run('ALTER TABLE missions ADD COLUMN garage_id INTEGER');
+  } catch (error) {
+    if (!String(error.message).includes('duplicate column name')) {
+      throw error;
+    }
+  }
+  try {
+    await run('ALTER TABLE missions ADD COLUMN labor_supplies_ttc REAL DEFAULT 0');
   } catch (error) {
     if (!String(error.message).includes('duplicate column name')) {
       throw error;

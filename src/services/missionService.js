@@ -25,6 +25,7 @@ const mapMission = (mission) => {
 
   return {
     id: mission.id,
+    missionCode: mission.mission_code || null,
     assureurId: mission.assureur_id !== null ? Number(mission.assureur_id) : null,
     assureurNom,
     assureurContact,
@@ -212,6 +213,7 @@ const listMissions = async ({ role, userId, filters = {}, pagination = {} }) => 
 
   if (keyword) {
     const keywordColumns = [
+      'missions.mission_code',
       'missions.assureur_nom',
       'missions.assureur_contact',
       'missions.assureur_agence_nom',
@@ -366,6 +368,7 @@ const createMission = async (payload, currentUserId) => {
     valeurEpaves,
     indemnisationFinale,
     synthese,
+    missionCode,
 
     garageId,
     agentId,
@@ -470,6 +473,12 @@ const createMission = async (payload, currentUserId) => {
     franchiseTauxValue = null;
     franchiseMontantValue = null;
   }
+  const missionCodeValue =
+    typeof missionCode === 'string'
+      ? missionCode.trim() || null
+      : missionCode !== undefined && missionCode !== null
+      ? String(missionCode)
+      : null;
   const responsabiliteValue =
     typeof responsabilite === 'string'
       ? responsabilite.trim() || null
@@ -513,6 +522,7 @@ const createMission = async (payload, currentUserId) => {
       assure_nom,
       assure_telephone,
       assure_email,
+      mission_code,
       vehicule_marque,
       vehicule_modele,
       vehicule_immatriculation,
@@ -549,7 +559,11 @@ const createMission = async (payload, currentUserId) => {
       statut,
       created_by
     ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?, ?
     )`,
     [
       insurer.nom,
@@ -563,6 +577,7 @@ const createMission = async (payload, currentUserId) => {
       assureNom,
       assureTelephone,
       assureEmail,
+      missionCodeValue,
       brand.nom,
       vehiculeModele,
       vehiculeImmatriculation,
@@ -729,6 +744,7 @@ const updateMission = async (id, payload) => {
   if (Object.prototype.hasOwnProperty.call(payload, 'vehiculeImmatriculation')) pushUpdate('vehicule_immatriculation', payload.vehiculeImmatriculation);
   if (Object.prototype.hasOwnProperty.call(payload, 'vehiculeAnnee')) pushUpdate('vehicule_annee', normalizeCirculationDate(payload.vehiculeAnnee));
   if (Object.prototype.hasOwnProperty.call(payload, 'vehiculeVin')) pushUpdate('vehicule_vin', payload.vehiculeVin);
+  if (Object.prototype.hasOwnProperty.call(payload, 'missionCode')) pushUpdate('mission_code', payload.missionCode);
   if (Object.prototype.hasOwnProperty.call(payload, 'vehiculeKilometrage')) {
     const rawKm = payload.vehiculeKilometrage;
     let kmValue;

@@ -147,14 +147,19 @@ const calculateFranchiseAmount = (mission, evaluationTotalTtc) => {
   return Math.max(percentValue, fixed);
 };
 
-const calculateIndemnisationFinale = (mission, laborTotals) => {
-  const base = laborTotals?.grandTotalTtc || 0;
+const calculateIndemnisationFinale = (mission, netAfterVetusteTtc, franchiseBaseTtc) => {
+  const netBase = Math.max(0, netAfterVetusteTtc || 0);
+  const franchiseBase = Math.max(0, franchiseBaseTtc || 0);
+
+  // Si l'utilisateur a saisi une indemnisation finale, on l'affiche telle quelle
   if (mission && mission.indemnisationFinale !== undefined && mission.indemnisationFinale !== null) {
     const stored = Number(mission.indemnisationFinale);
-    return Number.isNaN(stored) ? Math.max(0, base) : stored;
+    return Number.isNaN(stored) ? netBase : Math.max(0, stored);
   }
-  const franchiseAmount = calculateFranchiseAmount(mission, base);
-  return Math.max(0, base - franchiseAmount);
+
+  // Sinon on calcule : net après vétusté - franchise (calculée sur TTC brut)
+  const franchiseAmount = calculateFranchiseAmount(mission, franchiseBase);
+  return Math.max(0, netBase - franchiseAmount);
 };
 
 
@@ -244,42 +249,73 @@ const addInlineSummaryTable = (doc, items) => {
     return;
   }
   const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-  const colWidth = usableWidth / items.length;
-  const rowHeight = 18;
+  const minColWidth = Math.min(usableWidth / items.length, 140);
+  const padding = 8;
+
+  // Measure text to allocate dynamic widths
+  const measurements = items.map(([label, value]) => {
+    doc.font('Helvetica-Bold').fontSize(8.5);
+    const labelWidth = doc.widthOfString(`${label} : `);
+    doc.font('Helvetica').fontSize(8.5);
+    const valueWidth = doc.widthOfString(`${safeValue(value)}`);
+    return labelWidth + valueWidth + padding * 2;
+  });
+  const totalMeasure = measurements.reduce((sum, w) => sum + w, 0) || 1;
+  let colWidths = measurements.map((w) => Math.max(minColWidth, (w / totalMeasure) * usableWidth));
+  const widthSum = colWidths.reduce((sum, w) => sum + w, 0);
+  if (widthSum > usableWidth) {
+    const scale = usableWidth / widthSum;
+    colWidths = colWidths.map((w) => w * scale);
+  } else {
+    const extra = (usableWidth - widthSum) / items.length;
+    colWidths = colWidths.map((w) => w + extra);
+  }
+
+  doc.font('Helvetica').fontSize(8.5);
+  const textHeights = items.map(([label, value], index) =>
+    doc.heightOfString(`${label} : ${safeValue(value)}`, {
+      width: colWidths[index] - padding * 2,
+      align: 'left',
+    })
+  );
+  const rowHeight = Math.max(18, Math.max(...textHeights) + padding);
+
   const startY = doc.y;
   doc
     .lineWidth(0.5)
     .strokeColor('#cbd5f5')
-    .rect(doc.page.margins.left, startY, colWidth * items.length, rowHeight)
+    .rect(doc.page.margins.left, startY, usableWidth, rowHeight)
     .stroke();
-  const textY = startY + rowHeight / 2 - 4;
+  const textY = startY + padding / 2;
+  let currentX = doc.page.margins.left;
   items.forEach(([label, value], index) => {
-    const columnX = doc.page.margins.left + index * colWidth;
+    const colWidth = colWidths[index];
     doc
       .font('Helvetica-Bold')
       .fontSize(8.5)
       .fillColor('#1f2933')
-      .text(`${label} : `, columnX + 4, textY, {
-        width: colWidth - 8,
+      .text(`${label} : `, currentX + padding / 2, textY, {
+        width: colWidth - padding,
         continued: true,
       })
       .font('Helvetica')
       .fillColor('#0f172a')
       .text(`${safeValue(value)}`, {
         continued: false,
+        width: colWidth - padding,
       });
+    currentX += colWidth;
   });
   doc.y = startY + rowHeight + 2;
 };
 
-const addTableSection = (doc, headers, rows, firstColumnRatio = 0.2) => {
+const addTableSection = (doc, headers, rows, firstColumnRatio = 0.2, options = {}) => {
+  const { headerHeight = 26, rowMinHeight = 17, rowPadding = 6 } = options;
   const tableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const remaining = tableWidth * (1 - firstColumnRatio);
   const colWidths = headers.map((_, index) =>
     index === 0 ? tableWidth * firstColumnRatio : remaining / (headers.length - 1)
   );
-  const headerHeight = 20;
-  const rowHeight = 17;
 
   const startY = doc.y;
   doc.save().fillColor('#1d4ed8').rect(doc.page.margins.left, startY, tableWidth, headerHeight).fill();
@@ -297,10 +333,18 @@ const addTableSection = (doc, headers, rows, firstColumnRatio = 0.2) => {
 
   let currentY = startY + headerHeight;
   rows.forEach((row) => {
+    doc.font('Helvetica').fontSize(9);
+    const cellHeights = row.map((cell, index) =>
+      doc.heightOfString(safeValue(cell), {
+        width: colWidths[index] - 6,
+        align: 'center',
+      })
+    );
+    const effectiveRowHeight = Math.max(rowMinHeight, ...cellHeights) + rowPadding;
     doc
       .strokeColor('#e2e8f0')
       .lineWidth(0.5)
-      .rect(doc.page.margins.left, currentY, tableWidth, rowHeight)
+      .rect(doc.page.margins.left, currentY, tableWidth, effectiveRowHeight)
       .stroke();
     let cellX = doc.page.margins.left;
     row.forEach((cell, index) => {
@@ -308,13 +352,13 @@ const addTableSection = (doc, headers, rows, firstColumnRatio = 0.2) => {
         .font('Helvetica')
         .fontSize(9)
         .fillColor('#0f172a')
-        .text(safeValue(cell), cellX + 3, currentY + 5, {
+        .text(safeValue(cell), cellX + 3, currentY + Math.max(3, Math.floor(rowPadding / 2)), {
           width: colWidths[index] - 6,
           align: 'center',
         });
       cellX += colWidths[index];
     });
-    currentY += rowHeight;
+    currentY += effectiveRowHeight;
   });
   doc.y = currentY + 6;
   doc.x = doc.page.margins.left;
@@ -334,9 +378,9 @@ const addObservationSection = (doc, mission) => {
 
 const addSignatureSection = (doc) => {
   const generationDate = formatDate(new Date().toISOString());
-  const boxWidth = 180;
-  const boxHeight = 55;
-  const spacing = 16;
+  const boxWidth = 170;
+  const boxHeight = 46;
+  const spacing = 10;
   let startY = doc.page.height - doc.page.margins.bottom - (boxHeight + spacing);
 
   if (doc.y > startY) {
@@ -383,7 +427,8 @@ const createMissionReport = (
   damageData = { items: [], totals: {} },
   laborData = { entries: [], totals: {} }
 ) => {
-  const doc = new PDFDocument({ size: 'A4', margin: 40 });
+  const doc = new PDFDocument({ size: 'A4', margin: 32 });
+  const missionLabel = mission.missionCode ? mission.missionCode : `#${mission.id}`;
 
   const logoPath = resolveLogo();
   if (logoPath) {
@@ -392,21 +437,28 @@ const createMissionReport = (
     } catch (error) {
       // ignore logo rendering errors
     }
-    doc.moveDown(0.4);
+    doc.moveDown(0.2);
   }
 
   doc.fontSize(18).font('Helvetica-Bold').fillColor('#0f172a').text('Rapport d\'expertise', { align: 'right' });
-  doc.fontSize(10).font('Helvetica').fillColor('#475569').text(`Mission #${mission.id}`, { align: 'right' });
+  doc.fontSize(10).font('Helvetica').fillColor('#475569').text(`Mission ${missionLabel}`, { align: 'right' });
   doc.fontSize(9).font('Helvetica').fillColor('#475569').text(
     `N° immatriculation : ${mission.vehiculeImmatriculation || '-'}`,
     { align: 'right' }
   );
-  doc.moveDown(0.5);
+  doc.moveDown(0.2);
 
-  const damageVetusteLoss = Math.max(0, (damageData.totals?.totalTtc || 0) - (damageData.totals?.totalAfterTtc || 0));
+  const damageVetusteLoss = Math.max(
+    0,
+    (damageData.totals?.totalTtc || 0) - (damageData.totals?.totalAfterTtc || 0)
+  );
+  const damageVetusteHt = Math.max(0, (damageData.totals?.totalHt || 0) - (damageData.totals?.totalAfter || 0));
+  const damageVetusteTva = Math.max(0, damageVetusteLoss - damageVetusteHt);
   const evaluationTotals = laborData?.totals || {};
   const evaluationTotalTtc = evaluationTotals.grandTotalTtc || 0;
-  const indemnisationValue = calculateIndemnisationFinale(mission, evaluationTotals);
+  const franchiseBaseTtc = evaluationTotals.grandTotalTtc || 0;
+  const netAfterVetusteTtc = Math.max(0, franchiseBaseTtc - damageVetusteLoss);
+  const indemnisationValue = calculateIndemnisationFinale(mission, netAfterVetusteTtc, franchiseBaseTtc);
   addFramedSection(doc, 'Informations principales', () => {
     addTwoColumnRows(doc, [
       ['Assureur', mission.assureurNom, 'Contact assureur', mission.assureurContact],
@@ -466,46 +518,42 @@ const createMissionReport = (
       `${(entry.ttc || 0).toFixed(2)} MAD`,
     ]);
     const totals = laborData.totals || {};
+    const laborHt = totals.totalHt || 0;
+    const suppliesHt = totals.suppliesHt || 0;
+    const grandTotalHt = totals.grandTotalHt || laborHt + suppliesHt;
+    const laborTva = totals.totalTva || 0;
+    const suppliesTva = Math.max(0, (totals.suppliesTtc || 0) - suppliesHt);
+    const combinedTva = laborTva + suppliesTva;
+    const laborTtc = totals.totalTtc || 0;
+    const suppliesTtc = totals.suppliesTtc || 0;
+    const combinedTtc = laborTtc + suppliesTtc;
+    const displayHt = grandTotalHt;
+    const displayTva = combinedTva;
+    const displayTtc = combinedTtc;
     const summaryRows = [
       [
         'Total main d\'oeuvre',
         '',
         '',
-        formatCurrency(totals.totalHt),
-        formatCurrency(totals.totalTva),
-        formatCurrency(totals.totalTtc),
+        formatCurrency(laborHt),
+        formatCurrency(laborTva),
+        formatCurrency(laborTtc),
       ],
       [
         'Fournitures',
         '',
         '',
-        formatCurrency(totals.suppliesHt),
-        formatCurrency(totals.suppliesTva),
+        formatCurrency(suppliesHt),
+        formatCurrency(suppliesTva),
         formatCurrency(totals.suppliesTtc),
       ],
       [
         'Montant total',
         '',
         '',
-        formatCurrency(totals.grandTotalHt),
-        formatCurrency(totals.totalTva),
-        formatCurrency(totals.grandTotalTtc),
-      ],
-      [
-        'Vetuste TTC',
-        '',
-        '',
-        '',
-        '',
-        formatCurrency(damageVetusteLoss),
-      ],
-      [
-        'Indemnisation finale',
-        '',
-        '',
-        '',
-        '',
-        formatCurrency(indemnisationValue),
+        formatCurrency(displayHt),
+        formatCurrency(displayTva),
+        formatCurrency(displayTtc),
       ],
     ];
 
@@ -513,10 +561,18 @@ const createMissionReport = (
       doc,
       ['Main d\'oeuvre', 'Nombre d\'heures', 'Taux horaire', 'Hors taxe', 'T.V.A', 'Total TTC'],
       [...laborRows, ...summaryRows],
-      0.28
+      0.28,
+      { headerHeight: 20, rowMinHeight: 14, rowPadding: 4 }
     );
 
+    addInlineSummaryTable(doc, [
+      ['Total main d\'oeuvre (TTC)', formatCurrency(laborTtc)],
+      ['Fournitures (TTC)', formatCurrency(suppliesTtc)],
+      ['Montant total (TTC)', formatCurrency(displayTtc)],
+    ]);
+
     const guaranteeItems = [
+      ['Responsabilite', formatResponsabilite(mission.responsabilite)],
       ['Type de garantie', formatGuaranteeType(mission.garantieType)],
     ];
     if (guaranteeRequiresFranchise(mission.garantieType)) {
@@ -526,12 +582,15 @@ const createMissionReport = (
       );
     }
     addInlineSummaryTable(doc, guaranteeItems);
-    addInlineSummaryTable(doc, [['Responsabilite', formatResponsabilite(mission.responsabilite)]]);
     addInlineSummaryTable(doc, [
       ['Reforme', formatReformeType(mission.reformeType)],
       ['Valeur assuree', formatPlainNumber(mission.valeurAssuree)],
       ['Valeur venale', formatPlainNumber(mission.valeurVenale)],
       ['Valeur epaves', formatPlainNumber(mission.valeurEpaves)],
+    ]);
+    addInlineSummaryTable(doc, [
+      ['Vetuste TTC', formatCurrency(damageVetusteLoss)],
+      ['Indemnisation finale', formatCurrency(indemnisationValue)],
     ]);
     doc.moveDown(0.3);
   }
@@ -541,47 +600,42 @@ const createMissionReport = (
     doc.addPage();
     addSectionTitle(doc, 'Description des dommages');
     const damageRows = damageData.items.map((item) => {
-      const priceTtc =
-        item.priceTtc !== undefined
-          ? item.priceTtc
-          : (item.priceHt || 0) * (item.withVat ? 1.2 : 1);
+      const priceHt = item.priceHt || 0;
+      const priceAfter = item.priceAfter || 0;
+      const priceTtc = item.priceTtc !== undefined ? item.priceTtc : priceHt * (item.withVat ? 1.2 : 1);
+      const priceAfterTtc =
+        item.priceAfterTtc !== undefined ? item.priceAfterTtc : priceAfter * (item.withVat ? 1.2 : 1);
       return [
         item.piece,
         formatDamageTypeLabel(item.pieceType),
-        `${(item.priceHt || 0).toFixed(2)} HT`,
-        `${(item.vetuste || 0).toFixed(0)} %`,
-        `${(item.priceAfter || 0).toFixed(2)} HT`,
+        `${priceHt.toFixed(2)} HT`,
         formatVatChoice(item.withVat),
         `${priceTtc.toFixed(2)} TTC`,
+        `${(item.vetuste || 0).toFixed(0)} %`,
+        `${priceAfter.toFixed(2)} HT`,
+        `${priceAfterTtc.toFixed(2)} TTC`,
       ];
     });
     const totals = damageData.totals || {};
     const summaryRows = [
-      [
-        'Total dommages',
-        '',
-        formatCurrency(totals.totalHt),
-        '',
-        '',
-        '',
-        formatCurrency(totals.totalTtc),
-      ],
-      [
-        'Apres vetuste',
-        '',
-        '',
-        '',
-        formatCurrency(totals.totalAfter),
-        '',
-        formatCurrency(totals.totalAfterTtc),
-      ],
+      ['Total dommages', '', formatCurrency(totals.totalHt), '', formatCurrency(totals.totalTtc), '', '', ''],
+      ['Apres vetuste', '', '', '', '', '', formatCurrency(totals.totalAfter), formatCurrency(totals.totalAfterTtc)],
     ];
 
     addTableSection(
       doc,
-      ['Piece', 'Type', 'Prix HT', 'Vetuste', 'Apres vetuste', 'TVA', 'Prix TTC'],
+      [
+        'Piece',
+        'Type',
+        'Prix HT',
+        'TVA',
+        'Prix TTC',
+        'Vetuste',
+        'Apres vetuste (HT)',
+        'Apres vetuste (TTC)',
+      ],
       [...damageRows, ...summaryRows],
-      0.22
+      0.18
     );
     addObservationSection(doc, mission);
     addSignatureSection(doc);

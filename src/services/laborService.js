@@ -27,12 +27,12 @@ const buildDefaultEntries = (rows = []) => {
   });
 };
 
-const computeTotals = (entries, suppliesHt = 0) => {
+const computeTotals = (entries, suppliesHt = 0, suppliesTtc = 0) => {
   const totalHours = entries.reduce((sum, item) => sum + item.hours, 0);
   const totalHt = entries.reduce((sum, item) => sum + item.horsTaxe, 0);
   const totalTva = entries.reduce((sum, item) => sum + item.tva, 0);
   const totalTtc = entries.reduce((sum, item) => sum + item.ttc, 0);
-  const suppliesTva = suppliesHt * VAT_RATE;
+  const suppliesTva = Math.max(0, suppliesTtc - suppliesHt);
   return {
     totalHours,
     totalHt,
@@ -40,10 +40,10 @@ const computeTotals = (entries, suppliesHt = 0) => {
     totalTtc,
     suppliesHt,
     suppliesTva,
-    suppliesTtc: suppliesHt * (1 + VAT_RATE),
+    suppliesTtc,
     grandTotalHt: totalHt + suppliesHt,
     grandTotalTva: totalTva + suppliesTva,
-    grandTotalTtc: totalTtc + suppliesHt * (1 + VAT_RATE),
+    grandTotalTtc: totalTtc + suppliesTtc,
   };
 };
 
@@ -54,16 +54,18 @@ const listLaborsByMission = async (missionId) => {
      WHERE mission_id = ?`,
     [missionId]
   );
-  const suppliesRow = await get('SELECT labor_supplies_ht AS supplies FROM missions WHERE id = ?', [
-    missionId,
-  ]);
+  const suppliesRow = await get(
+    'SELECT labor_supplies_ht AS supplies, labor_supplies_ttc AS suppliesTtc FROM missions WHERE id = ?',
+    [missionId]
+  );
   const suppliesHt = normalizeNumber(suppliesRow?.supplies);
+  const suppliesTtc = normalizeNumber(suppliesRow?.suppliesTtc);
   const entries = buildDefaultEntries(rows);
-  const totals = computeTotals(entries, suppliesHt);
+  const totals = computeTotals(entries, suppliesHt, suppliesTtc);
   return { entries, totals };
 };
 
-const saveLabors = async (missionId, { entries = [], suppliesHt = 0 }) => {
+const saveLabors = async (missionId, { entries = [], suppliesHt = 0, suppliesTtc = 0 }) => {
   const suppliedMap = new Map(
     (entries || []).map((entry) => [entry.category, { hours: normalizeNumber(entry.hours), rate: normalizeNumber(entry.rate) }])
   );
@@ -85,6 +87,10 @@ const saveLabors = async (missionId, { entries = [], suppliesHt = 0 }) => {
   }
   await run('UPDATE missions SET labor_supplies_ht = ? WHERE id = ?', [
     normalizeNumber(suppliesHt),
+    missionId,
+  ]);
+  await run('UPDATE missions SET labor_supplies_ttc = ? WHERE id = ?', [
+    normalizeNumber(suppliesTtc),
     missionId,
   ]);
   return listLaborsByMission(missionId);

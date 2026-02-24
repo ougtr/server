@@ -476,9 +476,9 @@ router.put('/:id/labors', loadMissionForUser, async (req, res) => {
   if (!canEditMission(req)) {
     return res.status(403).json({ message: 'Acces refuse' });
   }
-  const { entries, suppliesHt } = req.body || {};
+  const { entries, suppliesHt, suppliesTtc } = req.body || {};
   try {
-    const data = await saveLabors(req.params.id, { entries, suppliesHt });
+    const data = await saveLabors(req.params.id, { entries, suppliesHt, suppliesTtc });
     res.json(data);
   } catch (error) {
     res.status(400).json({ message: error.message || 'Enregistrement impossible' });
@@ -486,7 +486,6 @@ router.put('/:id/labors', loadMissionForUser, async (req, res) => {
 });
 
 module.exports = router;
-
 
 
 
