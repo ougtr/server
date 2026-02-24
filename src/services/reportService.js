@@ -47,7 +47,8 @@ const formatKilometrage = (value) => {
     return '-';
   }
   const numeric = Number(value);
-  const formatted = Number.isFinite(numeric) ? numeric.toLocaleString('fr-FR') : value;
+  // Keep raw digits only (no thousands separator) to avoid PDF glyph issues.
+  const formatted = Number.isFinite(numeric) ? String(Math.trunc(numeric)) : String(value).trim();
   return `${formatted} km`;
 };
 
