@@ -151,18 +151,15 @@ const calculateIndemnisationFinale = (mission, netAfterVetusteTtc, franchiseBase
   const netBase = Math.max(0, netAfterVetusteTtc || 0);
   const franchiseBase = Math.max(0, franchiseBaseTtc || 0);
 
-  // Si l'utilisateur a saisi une indemnisation finale, on l'affiche telle quelle
+  // Keep manual user override when it exists.
   if (mission && mission.indemnisationFinale !== undefined && mission.indemnisationFinale !== null) {
     const stored = Number(mission.indemnisationFinale);
     return Number.isNaN(stored) ? netBase : Math.max(0, stored);
   }
 
-  // Sinon on calcule : net après vétusté - franchise (calculée sur TTC brut)
   const franchiseAmount = calculateFranchiseAmount(mission, franchiseBase);
   return Math.max(0, netBase - franchiseAmount);
 };
-
-
 
 const addSectionTitle = (doc, title) => {
   doc.x = doc.page.margins.left;
@@ -195,7 +192,9 @@ const addTwoColumnRows = (doc, rows) => {
     addKeyValue(doc, leftLabel, leftValue, colWidth - 10);
     doc.x = doc.page.margins.left + colWidth;
     doc.y = top;
-    addKeyValue(doc, rightLabel, rightValue, colWidth - 20);
+    if (rightLabel || (rightValue !== null && rightValue !== undefined && rightValue !== '')) {
+      addKeyValue(doc, rightLabel, rightValue, colWidth - 20);
+    }
     doc.x = doc.page.margins.left;
     doc.moveDown(0.15);
   });
@@ -203,6 +202,9 @@ const addTwoColumnRows = (doc, rows) => {
 };
 
 const addFramedSection = (doc, title, renderContent) => {
+  if (typeof renderContent !== 'function') {
+    return;
+  }
   const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const frameLeft = doc.page.margins.left - 2;
   const frameWidth = usableWidth + 4;
@@ -248,11 +250,11 @@ const addInlineSummaryTable = (doc, items) => {
   if (!items || !items.length) {
     return;
   }
+
   const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const minColWidth = Math.min(usableWidth / items.length, 140);
   const padding = 8;
 
-  // Measure text to allocate dynamic widths
   const measurements = items.map(([label, value]) => {
     doc.font('Helvetica-Bold').fontSize(8.5);
     const labelWidth = doc.widthOfString(`${label} : `);
@@ -260,15 +262,16 @@ const addInlineSummaryTable = (doc, items) => {
     const valueWidth = doc.widthOfString(`${safeValue(value)}`);
     return labelWidth + valueWidth + padding * 2;
   });
-  const totalMeasure = measurements.reduce((sum, w) => sum + w, 0) || 1;
-  let colWidths = measurements.map((w) => Math.max(minColWidth, (w / totalMeasure) * usableWidth));
-  const widthSum = colWidths.reduce((sum, w) => sum + w, 0);
-  if (widthSum > usableWidth) {
-    const scale = usableWidth / widthSum;
-    colWidths = colWidths.map((w) => w * scale);
+
+  const totalMeasure = measurements.reduce((sum, width) => sum + width, 0) || 1;
+  let colWidths = measurements.map((width) => Math.max(minColWidth, (width / totalMeasure) * usableWidth));
+  const totalWidth = colWidths.reduce((sum, width) => sum + width, 0);
+  if (totalWidth > usableWidth) {
+    const scale = usableWidth / totalWidth;
+    colWidths = colWidths.map((width) => width * scale);
   } else {
-    const extra = (usableWidth - widthSum) / items.length;
-    colWidths = colWidths.map((w) => w + extra);
+    const extra = (usableWidth - totalWidth) / items.length;
+    colWidths = colWidths.map((width) => width + extra);
   }
 
   doc.font('Helvetica').fontSize(8.5);
@@ -286,6 +289,7 @@ const addInlineSummaryTable = (doc, items) => {
     .strokeColor('#cbd5f5')
     .rect(doc.page.margins.left, startY, usableWidth, rowHeight)
     .stroke();
+
   const textY = startY + padding / 2;
   let currentX = doc.page.margins.left;
   items.forEach(([label, value], index) => {
@@ -306,6 +310,7 @@ const addInlineSummaryTable = (doc, items) => {
       });
     currentX += colWidth;
   });
+
   doc.y = startY + rowHeight + 2;
 };
 
@@ -341,11 +346,13 @@ const addTableSection = (doc, headers, rows, firstColumnRatio = 0.2, options = {
       })
     );
     const effectiveRowHeight = Math.max(rowMinHeight, ...cellHeights) + rowPadding;
+
     doc
       .strokeColor('#e2e8f0')
       .lineWidth(0.5)
       .rect(doc.page.margins.left, currentY, tableWidth, effectiveRowHeight)
       .stroke();
+
     let cellX = doc.page.margins.left;
     row.forEach((cell, index) => {
       doc
@@ -358,8 +365,10 @@ const addTableSection = (doc, headers, rows, firstColumnRatio = 0.2, options = {
         });
       cellX += colWidths[index];
     });
+
     currentY += effectiveRowHeight;
   });
+
   doc.y = currentY + 6;
   doc.x = doc.page.margins.left;
 };
@@ -443,7 +452,7 @@ const createMissionReport = (
   doc.fontSize(18).font('Helvetica-Bold').fillColor('#0f172a').text('Rapport d\'expertise', { align: 'right' });
   doc.fontSize(10).font('Helvetica').fillColor('#475569').text(`Mission ${missionLabel}`, { align: 'right' });
   doc.fontSize(9).font('Helvetica').fillColor('#475569').text(
-    `N° immatriculation : ${mission.vehiculeImmatriculation || '-'}`,
+    `No immatriculation : ${mission.vehiculeImmatriculation || '-'}`,
     { align: 'right' }
   );
   doc.moveDown(0.2);
@@ -452,13 +461,12 @@ const createMissionReport = (
     0,
     (damageData.totals?.totalTtc || 0) - (damageData.totals?.totalAfterTtc || 0)
   );
-  const damageVetusteHt = Math.max(0, (damageData.totals?.totalHt || 0) - (damageData.totals?.totalAfter || 0));
-  const damageVetusteTva = Math.max(0, damageVetusteLoss - damageVetusteHt);
+
   const evaluationTotals = laborData?.totals || {};
-  const evaluationTotalTtc = evaluationTotals.grandTotalTtc || 0;
   const franchiseBaseTtc = evaluationTotals.grandTotalTtc || 0;
   const netAfterVetusteTtc = Math.max(0, franchiseBaseTtc - damageVetusteLoss);
   const indemnisationValue = calculateIndemnisationFinale(mission, netAfterVetusteTtc, franchiseBaseTtc);
+
   addFramedSection(doc, 'Informations principales', () => {
     addTwoColumnRows(doc, [
       ['Assureur', mission.assureurNom, 'Contact assureur', mission.assureurContact],
@@ -509,6 +517,7 @@ const createMissionReport = (
 
   if (laborData.entries && laborData.entries.length) {
     addSectionTitle(doc, 'Evaluation de la remise en etat');
+
     const laborRows = laborData.entries.map((entry) => [
       entry.label,
       (entry.hours || 0).toFixed(2),
@@ -517,6 +526,7 @@ const createMissionReport = (
       `${(entry.tva || 0).toFixed(2)} MAD`,
       `${(entry.ttc || 0).toFixed(2)} MAD`,
     ]);
+
     const totals = laborData.totals || {};
     const laborHt = totals.totalHt || 0;
     const suppliesHt = totals.suppliesHt || 0;
@@ -527,9 +537,7 @@ const createMissionReport = (
     const laborTtc = totals.totalTtc || 0;
     const suppliesTtc = totals.suppliesTtc || 0;
     const combinedTtc = laborTtc + suppliesTtc;
-    const displayHt = grandTotalHt;
-    const displayTva = combinedTva;
-    const displayTtc = combinedTtc;
+
     const summaryRows = [
       [
         'Total main d\'oeuvre',
@@ -545,15 +553,15 @@ const createMissionReport = (
         '',
         formatCurrency(suppliesHt),
         formatCurrency(suppliesTva),
-        formatCurrency(totals.suppliesTtc),
+        formatCurrency(suppliesTtc),
       ],
       [
         'Montant total',
         '',
         '',
-        formatCurrency(displayHt),
-        formatCurrency(displayTva),
-        formatCurrency(displayTtc),
+        formatCurrency(grandTotalHt),
+        formatCurrency(combinedTva),
+        formatCurrency(combinedTtc),
       ],
     ];
 
@@ -568,7 +576,7 @@ const createMissionReport = (
     addInlineSummaryTable(doc, [
       ['Total main d\'oeuvre (TTC)', formatCurrency(laborTtc)],
       ['Fournitures (TTC)', formatCurrency(suppliesTtc)],
-      ['Montant total (TTC)', formatCurrency(displayTtc)],
+      ['Montant total (TTC)', formatCurrency(combinedTtc)],
     ]);
 
     const guaranteeItems = [
@@ -582,16 +590,19 @@ const createMissionReport = (
       );
     }
     addInlineSummaryTable(doc, guaranteeItems);
+
     addInlineSummaryTable(doc, [
       ['Reforme', formatReformeType(mission.reformeType)],
       ['Valeur assuree', formatPlainNumber(mission.valeurAssuree)],
       ['Valeur venale', formatPlainNumber(mission.valeurVenale)],
       ['Valeur epaves', formatPlainNumber(mission.valeurEpaves)],
     ]);
+
     addInlineSummaryTable(doc, [
       ['Vetuste TTC', formatCurrency(damageVetusteLoss)],
       ['Indemnisation finale', formatCurrency(indemnisationValue)],
     ]);
+
     doc.moveDown(0.3);
   }
 
@@ -599,12 +610,14 @@ const createMissionReport = (
     addSignatureSection(doc);
     doc.addPage();
     addSectionTitle(doc, 'Description des dommages');
+
     const damageRows = damageData.items.map((item) => {
       const priceHt = item.priceHt || 0;
       const priceAfter = item.priceAfter || 0;
       const priceTtc = item.priceTtc !== undefined ? item.priceTtc : priceHt * (item.withVat ? 1.2 : 1);
       const priceAfterTtc =
         item.priceAfterTtc !== undefined ? item.priceAfterTtc : priceAfter * (item.withVat ? 1.2 : 1);
+
       return [
         item.piece,
         formatDamageTypeLabel(item.pieceType),
@@ -616,6 +629,7 @@ const createMissionReport = (
         `${priceAfterTtc.toFixed(2)} TTC`,
       ];
     });
+
     const totals = damageData.totals || {};
     const summaryRows = [
       ['Total dommages', '', formatCurrency(totals.totalHt), '', formatCurrency(totals.totalTtc), '', '', ''],
@@ -637,6 +651,7 @@ const createMissionReport = (
       [...damageRows, ...summaryRows],
       0.18
     );
+
     addObservationSection(doc, mission);
     addSignatureSection(doc);
   } else {
@@ -650,26 +665,3 @@ const createMissionReport = (
 module.exports = {
   createMissionReport,
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
