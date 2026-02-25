@@ -27,6 +27,11 @@ const formatCurrency = (value) => {
   return `${amount.toFixed(2)} MAD`;
 };
 
+const formatTableAmount = (value) => {
+  const amount = Number(value) || 0;
+  return amount.toFixed(2);
+};
+
 const ENERGY_LABELS = {
   diesel: 'Diesel',
   essence: 'Essence',
@@ -466,6 +471,7 @@ const createMissionReport = (
   const evaluationTotals = laborData?.totals || {};
   const franchiseBaseTtc = evaluationTotals.grandTotalTtc || 0;
   const netAfterVetusteTtc = Math.max(0, franchiseBaseTtc - damageVetusteLoss);
+  const franchiseCalculee = calculateFranchiseAmount(mission, franchiseBaseTtc);
   const indemnisationValue = calculateIndemnisationFinale(mission, netAfterVetusteTtc, franchiseBaseTtc);
 
   addFramedSection(doc, 'Informations principales', () => {
@@ -522,10 +528,10 @@ const createMissionReport = (
     const laborRows = laborData.entries.map((entry) => [
       entry.label,
       (entry.hours || 0).toFixed(2),
-      `${(entry.rate || 0).toFixed(2)} MAD`,
-      `${(entry.horsTaxe || 0).toFixed(2)} MAD`,
-      `${(entry.tva || 0).toFixed(2)} MAD`,
-      `${(entry.ttc || 0).toFixed(2)} MAD`,
+      formatTableAmount(entry.rate),
+      formatTableAmount(entry.horsTaxe),
+      formatTableAmount(entry.tva),
+      formatTableAmount(entry.ttc),
     ]);
 
     const totals = laborData.totals || {};
@@ -544,25 +550,25 @@ const createMissionReport = (
         'Total main d\'oeuvre',
         '',
         '',
-        formatCurrency(laborHt),
-        formatCurrency(laborTva),
-        formatCurrency(laborTtc),
+        formatTableAmount(laborHt),
+        formatTableAmount(laborTva),
+        formatTableAmount(laborTtc),
       ],
       [
         'Fournitures',
         '',
         '',
-        formatCurrency(suppliesHt),
-        formatCurrency(suppliesTva),
-        formatCurrency(suppliesTtc),
+        formatTableAmount(suppliesHt),
+        formatTableAmount(suppliesTva),
+        formatTableAmount(suppliesTtc),
       ],
       [
         'Montant total',
         '',
         '',
-        formatCurrency(grandTotalHt),
-        formatCurrency(combinedTva),
-        formatCurrency(combinedTtc),
+        formatTableAmount(grandTotalHt),
+        formatTableAmount(combinedTva),
+        formatTableAmount(combinedTtc),
       ],
     ];
 
@@ -587,7 +593,7 @@ const createMissionReport = (
     if (guaranteeRequiresFranchise(mission.garantieType)) {
       guaranteeItems.push(
         ['Taux franchise', formatFranchiseRate(mission.garantieFranchiseTaux)],
-        ['Franchise (MAD)', formatFranchiseAmount(mission.garantieFranchiseMontant)]
+        ['Franchise (MAD)', formatFranchiseAmount(franchiseCalculee)]
       );
     }
     addInlineSummaryTable(doc, guaranteeItems);
@@ -622,19 +628,19 @@ const createMissionReport = (
       return [
         item.piece,
         formatDamageTypeLabel(item.pieceType),
-        `${priceHt.toFixed(2)} HT`,
+        formatTableAmount(priceHt),
         formatVatChoice(item.withVat),
-        `${priceTtc.toFixed(2)} TTC`,
+        formatTableAmount(priceTtc),
         `${(item.vetuste || 0).toFixed(0)} %`,
-        `${priceAfter.toFixed(2)} HT`,
-        `${priceAfterTtc.toFixed(2)} TTC`,
+        formatTableAmount(priceAfter),
+        formatTableAmount(priceAfterTtc),
       ];
     });
 
     const totals = damageData.totals || {};
     const summaryRows = [
-      ['Total dommages', '', formatCurrency(totals.totalHt), '', formatCurrency(totals.totalTtc), '', '', ''],
-      ['Apres vetuste', '', '', '', '', '', formatCurrency(totals.totalAfter), formatCurrency(totals.totalAfterTtc)],
+      ['Total dommages', '', formatTableAmount(totals.totalHt), '', formatTableAmount(totals.totalTtc), '', '', ''],
+      ['Apres vetuste', '', '', '', '', '', formatTableAmount(totals.totalAfter), formatTableAmount(totals.totalAfterTtc)],
     ];
 
     addTableSection(
