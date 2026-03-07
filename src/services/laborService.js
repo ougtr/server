@@ -8,21 +8,38 @@ const normalizeNumber = (value) => {
   return Number.isNaN(num) ? 0 : num;
 };
 
+const normalizeBooleanFlag = (value) => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number') {
+    return value !== 0;
+  }
+  if (typeof value === 'string') {
+    const lowered = value.trim().toLowerCase();
+    return !['0', 'false', 'non', 'off'].includes(lowered);
+  }
+  return value === undefined || value === null ? true : Boolean(value);
+};
+
 const buildDefaultEntries = (rows = []) => {
   const map = new Map(rows.map((row) => [row.category, row]));
   return LABOR_CATEGORIES.map((category) => {
     const existing = map.get(category.id);
     const hours = normalizeNumber(existing?.hours);
     const rate = normalizeNumber(existing?.rate);
+    const withVat = normalizeBooleanFlag(existing?.withVat);
     const horsTaxe = hours * rate;
+    const tva = withVat ? horsTaxe * VAT_RATE : 0;
     return {
       category: category.id,
       label: category.label,
       hours,
       rate,
+      withVat,
       horsTaxe,
-      tva: horsTaxe * VAT_RATE,
-      ttc: horsTaxe * (1 + VAT_RATE),
+      tva,
+      ttc: horsTaxe + tva,
     };
   });
 };
@@ -49,7 +66,7 @@ const computeTotals = (entries, suppliesHt = 0, suppliesTtc = 0) => {
 
 const listLaborsByMission = async (missionId) => {
   const rows = await all(
-    `SELECT category, hours, rate
+    `SELECT category, hours, rate, avec_tva AS withVat
      FROM mission_labors
      WHERE mission_id = ?`,
     [missionId]
@@ -67,22 +84,35 @@ const listLaborsByMission = async (missionId) => {
 
 const saveLabors = async (missionId, { entries = [], suppliesHt = 0, suppliesTtc = 0 }) => {
   const suppliedMap = new Map(
-    (entries || []).map((entry) => [entry.category, { hours: normalizeNumber(entry.hours), rate: normalizeNumber(entry.rate) }])
+    (entries || []).map((entry) => [
+      entry.category,
+      {
+        hours: normalizeNumber(entry.hours),
+        rate: normalizeNumber(entry.rate),
+        withVat: normalizeBooleanFlag(entry.withVat),
+      },
+    ])
   );
   const txEntries = LABOR_CATEGORIES.map((category) => {
-    const payload = suppliedMap.get(category.id) || { hours: 0, rate: 0 };
-    return { category: category.id, hours: payload.hours, rate: payload.rate };
+    const payload = suppliedMap.get(category.id) || { hours: 0, rate: 0, withVat: true };
+    return {
+      category: category.id,
+      hours: payload.hours,
+      rate: payload.rate,
+      withVat: payload.withVat,
+    };
   });
 
   for (const entry of txEntries) {
     await run(
-      `INSERT INTO mission_labors (mission_id, category, hours, rate)
-       VALUES (?, ?, ?, ?)
+      `INSERT INTO mission_labors (mission_id, category, hours, rate, avec_tva)
+       VALUES (?, ?, ?, ?, ?)
        ON CONFLICT(mission_id, category) DO UPDATE SET
-         hours = excluded.hours,
-         rate = excluded.rate,
-         updated_at = CURRENT_TIMESTAMP`,
-      [missionId, entry.category, entry.hours, entry.rate]
+          hours = excluded.hours,
+          rate = excluded.rate,
+          avec_tva = excluded.avec_tva,
+          updated_at = CURRENT_TIMESTAMP`,
+      [missionId, entry.category, entry.hours, entry.rate, entry.withVat ? 1 : 0]
     );
   }
   await run('UPDATE missions SET labor_supplies_ht = ? WHERE id = ?', [

@@ -48,6 +48,9 @@ const mapMission = (mission) => {
         : null,
     vehiculePuissanceFiscale: mission.vehicule_puissance_fiscale || null,
     vehiculeEnergie: mission.vehicule_energie || null,
+/*  */    vehiculeVuAvantTravaux: mission.vehicule_vu_avant_travaux || null,
+    vehiculeVuEnCoursTravaux: mission.vehicule_vu_en_cours_travaux || null,
+    vehiculeVuApresTravaux: mission.vehicule_vu_apres_travaux || null,
     sinistreType: mission.sinistre_type,
     sinistreCirconstances: mission.sinistre_circonstances,
     sinistreDate: mission.sinistre_date,
@@ -351,6 +354,9 @@ const createMission = async (payload, currentUserId) => {
     vehiculeKilometrage,
     vehiculePuissanceFiscale,
     vehiculeEnergie,
+    vehiculeVuAvantTravaux,
+    vehiculeVuEnCoursTravaux,
+    vehiculeVuApresTravaux,
     sinistreType,
     sinistreCirconstances,
     sinistreDate,
@@ -445,6 +451,9 @@ const createMission = async (payload, currentUserId) => {
       : vehiculeEnergie !== undefined && vehiculeEnergie !== null
       ? String(vehiculeEnergie)
       : null;
+  const vehiculeVuAvantTravauxValue = normalizeCirculationDate(vehiculeVuAvantTravaux);
+  const vehiculeVuEnCoursTravauxValue = normalizeCirculationDate(vehiculeVuEnCoursTravaux);
+  const vehiculeVuApresTravauxValue = normalizeCirculationDate(vehiculeVuApresTravaux);
   const garantieTypeValue =
     typeof garantieType === 'string'
       ? garantieType.trim() || null
@@ -531,6 +540,9 @@ const createMission = async (payload, currentUserId) => {
       vehicule_kilometrage,
       vehicule_puissance_fiscale,
       vehicule_energie,
+      vehicule_vu_avant_travaux,
+      vehicule_vu_en_cours_travaux,
+      vehicule_vu_apres_travaux,
       sinistre_type,
       sinistre_circonstances,
       sinistre_date,
@@ -563,7 +575,7 @@ const createMission = async (payload, currentUserId) => {
       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-      ?, ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     )`,
     [
       insurer.nom,
@@ -586,6 +598,9 @@ const createMission = async (payload, currentUserId) => {
       kilometrageValue,
       puissanceValue,
       energieValue,
+      vehiculeVuAvantTravauxValue,
+      vehiculeVuEnCoursTravauxValue,
+      vehiculeVuApresTravauxValue,
       sinistreType,
       sinistreCirconstances,
       sinistreDate,
@@ -763,6 +778,15 @@ const updateMission = async (id, payload) => {
   }
   if (Object.prototype.hasOwnProperty.call(payload, 'vehiculeEnergie')) {
     pushUpdate('vehicule_energie', payload.vehiculeEnergie);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'vehiculeVuAvantTravaux')) {
+    pushUpdate('vehicule_vu_avant_travaux', normalizeCirculationDate(payload.vehiculeVuAvantTravaux));
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'vehiculeVuEnCoursTravaux')) {
+    pushUpdate('vehicule_vu_en_cours_travaux', normalizeCirculationDate(payload.vehiculeVuEnCoursTravaux));
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'vehiculeVuApresTravaux')) {
+    pushUpdate('vehicule_vu_apres_travaux', normalizeCirculationDate(payload.vehiculeVuApresTravaux));
   }
   if (Object.prototype.hasOwnProperty.call(payload, 'sinistreType')) pushUpdate('sinistre_type', payload.sinistreType);
   if (Object.prototype.hasOwnProperty.call(payload, 'sinistreCirconstances')) pushUpdate('sinistre_circonstances', payload.sinistreCirconstances);

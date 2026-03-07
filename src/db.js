@@ -98,6 +98,9 @@ const initializeDatabase = async () => {
       vehicule_kilometrage INTEGER,
       vehicule_puissance_fiscale TEXT,
       vehicule_energie TEXT,
+      vehicule_vu_avant_travaux TEXT,
+      vehicule_vu_en_cours_travaux TEXT,
+      vehicule_vu_apres_travaux TEXT,
       garantie_type TEXT,
       garantie_franchise_taux REAL,
       garantie_franchise_montant REAL,
@@ -187,12 +190,21 @@ const initializeDatabase = async () => {
       category TEXT NOT NULL,
       hours REAL NOT NULL DEFAULT 0,
       rate REAL NOT NULL DEFAULT 0,
+      avec_tva INTEGER NOT NULL DEFAULT 1,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (mission_id, category),
       FOREIGN KEY(mission_id) REFERENCES missions(id) ON DELETE CASCADE
     )
   `);
+
+  try {
+    await run('ALTER TABLE mission_labors ADD COLUMN avec_tva INTEGER NOT NULL DEFAULT 1');
+  } catch (error) {
+    if (!String(error.message).includes('duplicate column name')) {
+      throw error;
+    }
+  }
 
   await run(`
     CREATE TABLE IF NOT EXISTS mission_damages (
@@ -351,6 +363,30 @@ const initializeDatabase = async () => {
 
   try {
     await run('ALTER TABLE missions ADD COLUMN vehicule_energie TEXT');
+  } catch (error) {
+    if (!String(error.message).includes('duplicate column name')) {
+      throw error;
+    }
+  }
+
+  try {
+    await run('ALTER TABLE missions ADD COLUMN vehicule_vu_avant_travaux TEXT');
+  } catch (error) {
+    if (!String(error.message).includes('duplicate column name')) {
+      throw error;
+    }
+  }
+
+  try {
+    await run('ALTER TABLE missions ADD COLUMN vehicule_vu_en_cours_travaux TEXT');
+  } catch (error) {
+    if (!String(error.message).includes('duplicate column name')) {
+      throw error;
+    }
+  }
+
+  try {
+    await run('ALTER TABLE missions ADD COLUMN vehicule_vu_apres_travaux TEXT');
   } catch (error) {
     if (!String(error.message).includes('duplicate column name')) {
       throw error;
