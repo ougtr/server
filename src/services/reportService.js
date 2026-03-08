@@ -448,14 +448,14 @@ const addCompactVehicleColumns = (doc, mission) => {
   const leftBottom = renderColumn(startX, firstWidth, [
     ['Marque', mission.vehiculeMarque],
     ['Immatriculation', mission.vehiculeImmatriculation],
-    ['Numero de chassis (VIN)', mission.vehiculeVin],
+    ['N° chassis', mission.vehiculeVin],
     ['Puissance fiscale', mission.vehiculePuissanceFiscale],
   ]);
 
   const middleX = startX + firstWidth + columnGap;
   const middleBottom = renderColumn(middleX, secondWidth, [
     ['Modele', mission.vehiculeModele],
-    ['Date de mise en circulation', formatDate(mission.vehiculeAnnee)],
+    ['Date MEC', formatDate(mission.vehiculeAnnee)],
     ['Kilometrage', formatKilometrage(mission.vehiculeKilometrage)],
     ['Energie', formatEnergyLabel(mission.vehiculeEnergie)],
   ]);
