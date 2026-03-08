@@ -19,6 +19,7 @@ const {
   getDamageById,
 } = require('../services/damageService');
 const { listLaborsByMission, saveLabors } = require('../services/laborService');
+const { optimizeUploadedPhoto } = require('../services/imageOptimizationService');
 const { ROLES, MISSION_STATUSES, PHOTO_LABELS } = require('../constants');
 const { UPLOAD_DIR } = require('../config');
 const { createMissionReport } = require('../services/reportService');
@@ -51,6 +52,22 @@ const documentUpload = multer({ storage });
 const isAllowedDocumentFile = (file) => {
   const extension = path.extname(file.originalname || '').toLowerCase();
   return ALLOWED_DOCUMENT_EXTENSIONS.has(extension) || ALLOWED_DOCUMENT_MIME_TYPES.has(file.mimetype);
+};
+
+const cleanupUploadedFiles = (files = []) => {
+  files.forEach((file) => {
+    const filePath = file?.path;
+    if (!filePath) {
+      return;
+    }
+    try {
+      fs.unlinkSync(filePath);
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        console.error('Impossible de supprimer un fichier temporaire', error);
+      }
+    }
+  });
 };
 
 router.use(authenticate);
@@ -333,26 +350,36 @@ router.post(
     const label = (req.body.label || '').trim();
 
     if (!label) {
+      cleanupUploadedFiles(req.files);
       return res.status(400).json({ message: 'Libelle de photo requis' });
     }
 
     if (!PHOTO_LABELS.includes(label)) {
+      cleanupUploadedFiles(req.files);
       return res.status(400).json({ message: 'Libelle de photo inconnu' });
     }
 
+    let files = [];
+    let photosPersisted = false;
     try {
-      const files = req.files.map((file) => ({
-        ...file,
-        relativePath: `${req.params.id}/${file.filename}`,
-      }));
+      files = await Promise.all(
+        req.files.map(async (file) => {
+          const optimizedFile = await optimizeUploadedPhoto(file);
+          return {
+            ...optimizedFile,
+            relativePath: `${req.params.id}/${optimizedFile.filename}`,
+          };
+        })
+      );
 
-      const saved = await addPhotos({
+      await addPhotos({
         missionId: req.params.id,
         files,
         phase,
         label,
         uploadedBy: req.user.id,
       });
+      photosPersisted = true;
 
       let mission = req.mission;
       if (
@@ -368,6 +395,10 @@ router.post(
       const photos = await listPhotosByMission(req.params.id);
       res.status(201).json({ photos, mission });
     } catch (error) {
+      if (!photosPersisted) {
+        cleanupUploadedFiles(files.length ? files : req.files);
+      }
+      console.error('Erreur photo upload', error);
       res.status(500).json({ message: 'Erreur lors de lenregistrement des photos' });
     }
   }
@@ -486,6 +517,5 @@ router.put('/:id/labors', loadMissionForUser, async (req, res) => {
 });
 
 module.exports = router;
-
 
 
