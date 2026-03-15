@@ -23,6 +23,7 @@ const { optimizeUploadedPhoto } = require('../services/imageOptimizationService'
 const { ROLES, MISSION_STATUSES, PHOTO_LABELS } = require('../constants');
 const { UPLOAD_DIR } = require('../config');
 const { createMissionReport } = require('../services/reportService');
+const { createMissionHonorairesReport } = require('../services/honorairesReportService');
 
 const router = express.Router();
 
@@ -158,6 +159,32 @@ router.get('/:id/report', loadMissionForUser, async (req, res) => {
   } catch (error) {
     console.error('Erreur rapport PDF', error);
     res.status(500).json({ message: 'Impossible de generer le rapport' });
+  }
+});
+
+router.get('/:id/honoraires-report', loadMissionForUser, async (req, res) => {
+  try {
+    const doc = createMissionHonorairesReport(req.mission, {
+      honoraires: req.query.honoraires,
+      photos: req.query.photos,
+      deplacement: req.query.deplacement,
+    });
+    const filename = `note-honoraires-mission-${req.mission.id}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    doc.pipe(res);
+    doc.on('error', (err) => {
+      console.error('Erreur note honoraires PDF', err);
+      if (!res.headersSent) {
+        res.status(500).json({ message: 'Impossible de generer la note dhonoraires' });
+      } else {
+        res.end();
+      }
+    });
+    doc.end();
+  } catch (error) {
+    console.error('Erreur note honoraires PDF', error);
+    res.status(500).json({ message: 'Impossible de generer la note dhonoraires' });
   }
 });
 
@@ -517,5 +544,3 @@ router.put('/:id/labors', loadMissionForUser, async (req, res) => {
 });
 
 module.exports = router;
-
-

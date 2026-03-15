@@ -34,6 +34,8 @@ const formatTableAmount = (value) => {
 
 const REPORT_ACCENT_COLOR = '#d90429';
 const REPORT_ACCENT_SOFT_COLOR = '#fecdd3';
+const PNG_DPI = 96;
+const REPORT_STAMP_SCALE = 0.67;
 
 const ENERGY_LABELS = {
   diesel: 'Diesel',
@@ -793,6 +795,36 @@ const REPORT_SIGNATURE_BOX_HEIGHT = 85;
 const REPORT_SIGNATURE_GAP = 8;
 const REPORT_PAGE_BOTTOM_RESERVED = REPORT_FOOTER_HEIGHT + REPORT_SIGNATURE_BOX_HEIGHT + REPORT_SIGNATURE_GAP + 6;
 
+const resolveStampImage = () => {
+  const projectRoot = path.resolve(__dirname, '..', '..', '..');
+  const candidates = [
+    path.join(projectRoot, 'server', 'cachet-opale.png'),
+    path.join(__dirname, '..', '..', 'cachet-opale.png'),
+  ];
+  return candidates.find((imagePath) => fs.existsSync(imagePath)) || null;
+};
+
+const readPngDimensions = (imagePath) => {
+  try {
+    const buffer = fs.readFileSync(imagePath);
+    const isPng =
+      buffer.length >= 24 &&
+      buffer[0] === 0x89 &&
+      buffer[1] === 0x50 &&
+      buffer[2] === 0x4e &&
+      buffer[3] === 0x47;
+    if (!isPng) {
+      return null;
+    }
+    return {
+      width: buffer.readUInt32BE(16),
+      height: buffer.readUInt32BE(20),
+    };
+  } catch (error) {
+    return null;
+  }
+};
+
 const addPageSignatureBlock = (doc) => {
   const previousX = doc.x;
   const previousY = doc.y;
@@ -802,6 +834,11 @@ const addPageSignatureBlock = (doc) => {
   const boxX = doc.page.width - doc.page.margins.right - REPORT_SIGNATURE_BOX_WIDTH;
   const boxY = footerTop - REPORT_SIGNATURE_BOX_HEIGHT - REPORT_SIGNATURE_GAP;
   const textY = boxY + 2;
+  const stampPath = resolveStampImage();
+  const signatureLabelX = boxX + 10;
+  const signatureLabelY = boxY + 8;
+  const signatureLabelWidth = 76;
+  const signatureLabelHeight = 12;
 
   doc.page.margins.bottom = 0;
   doc
@@ -817,11 +854,35 @@ const addPageSignatureBlock = (doc) => {
     .strokeColor('#94a3b8')
     .rect(boxX, boxY, REPORT_SIGNATURE_BOX_WIDTH, REPORT_SIGNATURE_BOX_HEIGHT)
     .stroke();
+
+  if (stampPath) {
+    const stampSize = readPngDimensions(stampPath);
+    const stampWidth = ((stampSize?.width || 334) * 72 * REPORT_STAMP_SCALE) / PNG_DPI;
+    const stampHeight = ((stampSize?.height || 141) * 72 * REPORT_STAMP_SCALE) / PNG_DPI;
+    const stampX = boxX + (REPORT_SIGNATURE_BOX_WIDTH - stampWidth) / 2;
+    const stampY = boxY + (REPORT_SIGNATURE_BOX_HEIGHT - stampHeight) / 2;
+    try {
+      doc.image(stampPath, stampX, stampY, {
+        width: stampWidth,
+        height: stampHeight,
+      });
+    } catch (error) {
+      // Keep the label visible even if the stamp image fails to render.
+    }
+  }
+
+  doc
+    .save()
+    .fillColor('#ffffff')
+    .opacity(0.92)
+    .roundedRect(signatureLabelX - 3, signatureLabelY - 1, signatureLabelWidth, signatureLabelHeight, 3)
+    .fill()
+    .restore();
   doc
     .font('Helvetica')
     .fontSize(7.8)
     .fillColor('#475569')
-    .text('Cachet / Signature', boxX + 12, boxY + 10, {
+    .text('Cachet / Signature', signatureLabelX, signatureLabelY, {
       lineBreak: false,
     });
 
