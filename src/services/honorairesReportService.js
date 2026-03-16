@@ -319,7 +319,6 @@ const createMissionHonorairesReport = (mission, amounts = {}) => {
 
   const infoRows = [
     ['Reference Opale', safe(mission?.missionCode || `M-${mission?.id || '-'}`)],
-    [`Mission ${NUMERO_LABEL}`, safe(mission?.id)],
     [`Sinistre ${NUMERO_LABEL}`, safe(mission?.sinistreType)],
     ['Date du Sinistre', formatShortDate(mission?.sinistreDate)],
     ['Assure', safe(mission?.assureNom)],
