@@ -282,6 +282,33 @@ const drawFeeLine = (doc, y, label, value) => {
   });
 };
 
+const drawBankSection = (doc, startX, startY) => {
+  const rows = [
+    ['Nom de La Banque', 'CIH Agence Casa El Oulfa'],
+    ['Nom du Titulaire du compte', 'OPALE EXPERTISE'],
+    ['Numero du compte', '230 780 6853479221002900 05'],
+  ];
+  const labelWidth = 136;
+  const colonX = startX + labelWidth;
+  const valueX = colonX + 10;
+  const rowHeight = 14;
+
+  rows.forEach(([label, value], index) => {
+    const rowY = startY + index * rowHeight;
+    doc
+      .font('Helvetica')
+      .fontSize(9.2)
+      .fillColor('#333333')
+      .text(label, startX, rowY, { width: labelWidth, lineBreak: false });
+    doc
+      .font('Helvetica')
+      .text(':', colonX, rowY, { width: 8, lineBreak: false });
+    doc
+      .font('Helvetica-Bold')
+      .text(value, valueX, rowY, { width: 170, lineBreak: false });
+  });
+};
+
 const createMissionHonorairesReport = (mission, amounts = {}) => {
   const doc = new PDFDocument({
     size: 'A4',
@@ -397,6 +424,9 @@ const createMissionHonorairesReport = (mission, amounts = {}) => {
       width: 160,
       lineBreak: false,
     });
+
+  drawBankSection(doc, 70, 668);
+
   doc
     .font('Helvetica')
     .text('Nous vous remercions par avance de votre reglement.', 70, 716, {

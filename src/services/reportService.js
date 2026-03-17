@@ -82,6 +82,7 @@ const formatVatChoice = (value) => (value ? 'Oui' : 'Non');
 
 const GUARANTEE_LABELS = {
   'dommage collision': 'Dommage collision',
+  'bris de glace': 'Bris de glace',
   tierce: 'Tierce',
   rc: 'RC',
 };
@@ -92,6 +93,13 @@ const guaranteeRequiresFranchise = (value) => {
   }
   const normalized = String(value).trim().toLowerCase();
   return normalized === 'dommage collision' || normalized === 'tierce';
+};
+
+const isTierceGuarantee = (value) => {
+  if (!value) {
+    return false;
+  }
+  return String(value).trim().toLowerCase() === 'tierce';
 };
 
 const formatGuaranteeType = (value) => {
@@ -330,7 +338,11 @@ const calculateIndemnisationFinale = (mission, netAfterVetusteTtc, franchiseBase
   }
 
   const franchiseAmount = calculateFranchiseAmount(mission, franchiseBase);
-  return applyResponsibilityShare(Math.max(0, netBase - franchiseAmount), mission?.responsabilite);
+  const amountAfterFranchise = Math.max(0, netBase - franchiseAmount);
+  if (isTierceGuarantee(mission?.garantieType)) {
+    return amountAfterFranchise;
+  }
+  return applyResponsibilityShare(amountAfterFranchise, mission?.responsabilite);
 };
 
 const addSectionTitle = (doc, title) => {
