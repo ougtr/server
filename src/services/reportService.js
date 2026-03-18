@@ -92,14 +92,15 @@ const guaranteeRequiresFranchise = (value) => {
     return false;
   }
   const normalized = String(value).trim().toLowerCase();
-  return normalized === 'dommage collision' || normalized === 'tierce';
+  return normalized === 'dommage collision' || normalized === 'tierce' || normalized === 'bris de glace';
 };
 
 const isTierceGuarantee = (value) => {
   if (!value) {
     return false;
   }
-  return String(value).trim().toLowerCase() === 'tierce';
+  const normalized = String(value).trim().toLowerCase();
+  return normalized === 'tierce' || normalized === 'bris de glace';
 };
 
 const formatGuaranteeType = (value) => {

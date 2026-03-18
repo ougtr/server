@@ -477,7 +477,7 @@ const createMission = async (payload, currentUserId) => {
     franchiseMontantValue = null;
   }
   const guaranteeRequiresFranchise =
-    garantieTypeValue && ['dommage collision', 'tierce'].includes(garantieTypeValue.toLowerCase());
+    garantieTypeValue && ['dommage collision', 'tierce', 'bris de glace'].includes(garantieTypeValue.toLowerCase());
   if (!guaranteeRequiresFranchise) {
     franchiseTauxValue = null;
     franchiseMontantValue = null;
@@ -807,7 +807,7 @@ const updateMission = async (id, payload) => {
     }
     pushUpdate('garantie_type', nextGuaranteeType);
     const requiresFranchise =
-      nextGuaranteeType && ['dommage collision', 'tierce'].includes(nextGuaranteeType.toLowerCase());
+      nextGuaranteeType && ['dommage collision', 'tierce', 'bris de glace'].includes(nextGuaranteeType.toLowerCase());
     if (!requiresFranchise) {
       pushUpdate('garantie_franchise_taux', null);
       pushUpdate('garantie_franchise_montant', null);
@@ -933,7 +933,6 @@ module.exports = {
   updateMissionStatus,
   deleteMission,
 };
-
 
 
 
