@@ -100,7 +100,7 @@ const isTierceGuarantee = (value) => {
     return false;
   }
   const normalized = String(value).trim().toLowerCase();
-  return normalized === 'tierce' || normalized === 'bris de glace';
+  return normalized === 'tierce' || normalized === 'bris de glace' || normalized === 'dommage collision';
 };
 
 const formatGuaranteeType = (value) => {
