@@ -738,22 +738,33 @@ const addTableSection = (doc, headers, rows, firstColumnRatio = 0.2, options = {
   const colWidths = headers.map((_, index) =>
     index === 0 ? tableWidth * firstColumnRatio : remaining / (headers.length - 1)
   );
+  const pageBottom = () => doc.page.height - doc.page.margins.bottom;
+  const ensureSpaceFor = (heightNeeded) => {
+    if (doc.y + heightNeeded <= pageBottom()) {
+      return;
+    }
+    doc.addPage();
+  };
+  const drawHeader = () => {
+    const startY = doc.y;
+    doc.save().fillColor(REPORT_ACCENT_COLOR).rect(doc.page.margins.left, startY, tableWidth, headerHeight).fill();
 
-  const startY = doc.y;
-  doc.save().fillColor(REPORT_ACCENT_COLOR).rect(doc.page.margins.left, startY, tableWidth, headerHeight).fill();
-
-  doc.font('Helvetica-Bold').fontSize(9).fillColor('#ffffff');
-  let headerX = doc.page.margins.left;
-  headers.forEach((header, index) => {
-    doc.text(header, headerX, startY + 6, {
-      width: colWidths[index],
-      align: 'center',
+    doc.font('Helvetica-Bold').fontSize(9).fillColor('#ffffff');
+    let headerX = doc.page.margins.left;
+    headers.forEach((header, index) => {
+      doc.text(header, headerX, startY + 6, {
+        width: colWidths[index],
+        align: 'center',
+      });
+      headerX += colWidths[index];
     });
-    headerX += colWidths[index];
-  });
-  doc.restore();
+    doc.restore();
+    doc.y = startY + headerHeight;
+  };
 
-  let currentY = startY + headerHeight;
+  ensureSpaceFor(headerHeight + rowMinHeight);
+  drawHeader();
+
   rows.forEach((row) => {
     doc.font('Helvetica').fontSize(9);
     const cellHeights = row.map((cell, index) =>
@@ -764,10 +775,16 @@ const addTableSection = (doc, headers, rows, firstColumnRatio = 0.2, options = {
     );
     const effectiveRowHeight = Math.max(rowMinHeight, ...cellHeights) + rowPadding;
 
+    if (doc.y + effectiveRowHeight > pageBottom()) {
+      doc.addPage();
+      drawHeader();
+    }
+
+    const rowY = doc.y;
     doc
       .strokeColor('#e2e8f0')
       .lineWidth(0.5)
-      .rect(doc.page.margins.left, currentY, tableWidth, effectiveRowHeight)
+      .rect(doc.page.margins.left, rowY, tableWidth, effectiveRowHeight)
       .stroke();
 
     let cellX = doc.page.margins.left;
@@ -776,17 +793,17 @@ const addTableSection = (doc, headers, rows, firstColumnRatio = 0.2, options = {
         .font('Helvetica')
         .fontSize(9)
         .fillColor('#0f172a')
-        .text(safeValue(cell), cellX + 3, currentY + Math.max(3, Math.floor(rowPadding / 2)), {
+        .text(safeValue(cell), cellX + 3, rowY + Math.max(3, Math.floor(rowPadding / 2)), {
           width: colWidths[index] - 6,
           align: 'center',
         });
       cellX += colWidths[index];
     });
 
-    currentY += effectiveRowHeight;
+    doc.y = rowY + effectiveRowHeight;
   });
 
-  doc.y = currentY + 4;
+  doc.y += 4;
   doc.x = doc.page.margins.left;
 };
 

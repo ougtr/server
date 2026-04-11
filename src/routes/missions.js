@@ -24,6 +24,10 @@ const { ROLES, MISSION_STATUSES, PHOTO_LABELS } = require('../constants');
 const { UPLOAD_DIR } = require('../config');
 const { createMissionReport } = require('../services/reportService');
 const { createMissionHonorairesReport } = require('../services/honorairesReportService');
+const {
+  createMissionPreliminaryContradictoireReport,
+} = require('../services/preliminaryContradictoireReportService');
+const { createMissionDamageNoticeReport } = require('../services/damageNoticeReportService');
 
 const router = express.Router();
 
@@ -69,6 +73,59 @@ const cleanupUploadedFiles = (files = []) => {
       }
     }
   });
+};
+
+const sanitizeFilename = (value) => String(value).replace(/[^a-zA-Z0-9.\-_]/g, '_');
+
+const renderPdfToBuffer = (doc) =>
+  new Promise((resolve, reject) => {
+    const chunks = [];
+    doc.on('data', (chunk) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+    doc.end();
+  });
+
+const archiveGeneratedPdf = async ({ missionId, filename, buffer, uploadedBy }) => {
+  const missionDir = path.join(UPLOAD_DIR, String(missionId));
+  fs.mkdirSync(missionDir, { recursive: true });
+  const storedFilename = `generated-${Date.now()}-${sanitizeFilename(filename)}`;
+  const relativePath = `${missionId}/${storedFilename}`;
+  const absolutePath = path.join(missionDir, storedFilename);
+
+  fs.writeFileSync(absolutePath, buffer);
+
+  await addDocuments({
+    missionId,
+    files: [
+      {
+        relativePath,
+        originalName: filename,
+        mimeType: 'application/pdf',
+      },
+    ],
+    uploadedBy,
+  });
+};
+
+const sendGeneratedPdf = async (res, { missionId, filename, doc, uploadedBy }) => {
+  const buffer = await renderPdfToBuffer(doc);
+  await archiveGeneratedPdf({
+    missionId,
+    filename,
+    buffer,
+    uploadedBy,
+  });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(buffer);
+};
+
+const sendPdfWithoutArchive = async (res, { filename, doc }) => {
+  const buffer = await renderPdfToBuffer(doc);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(buffer);
 };
 
 router.use(authenticate);
@@ -144,18 +201,12 @@ router.get('/:id/report', loadMissionForUser, async (req, res) => {
     ]);
     const doc = createMissionReport(req.mission, damages, labors);
     const filename = `rapport-mission-${req.mission.id}.pdf`;
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    doc.pipe(res);
-    doc.on('error', (err) => {
-      console.error('Erreur rapport PDF', err);
-      if (!res.headersSent) {
-        res.status(500).json({ message: 'Impossible de generer le rapport' });
-      } else {
-        res.end();
-      }
+    await sendGeneratedPdf(res, {
+      missionId: req.mission.id,
+      filename,
+      doc,
+      uploadedBy: req.user.id,
     });
-    doc.end();
   } catch (error) {
     console.error('Erreur rapport PDF', error);
     res.status(500).json({ message: 'Impossible de generer le rapport' });
@@ -170,21 +221,45 @@ router.get('/:id/honoraires-report', loadMissionForUser, async (req, res) => {
       deplacement: req.query.deplacement,
     });
     const filename = `note-honoraires-mission-${req.mission.id}.pdf`;
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    doc.pipe(res);
-    doc.on('error', (err) => {
-      console.error('Erreur note honoraires PDF', err);
-      if (!res.headersSent) {
-        res.status(500).json({ message: 'Impossible de generer la note dhonoraires' });
-      } else {
-        res.end();
-      }
+    await sendGeneratedPdf(res, {
+      missionId: req.mission.id,
+      filename,
+      doc,
+      uploadedBy: req.user.id,
     });
-    doc.end();
   } catch (error) {
     console.error('Erreur note honoraires PDF', error);
     res.status(500).json({ message: 'Impossible de generer la note dhonoraires' });
+  }
+});
+
+router.post('/:id/preliminary-contradictoire-report', loadMissionForUser, async (req, res) => {
+  try {
+    const doc = createMissionPreliminaryContradictoireReport(req.mission, req.body || {});
+    const filename = `rapport-preliminaire-contradictoire-mission-${req.mission.id}.pdf`;
+    await sendGeneratedPdf(res, {
+      missionId: req.mission.id,
+      filename,
+      doc,
+      uploadedBy: req.user.id,
+    });
+  } catch (error) {
+    console.error('Erreur rapport preliminaire contradictoire PDF', error);
+    res.status(500).json({ message: 'Impossible de generer le rapport preliminaire contradictoire' });
+  }
+});
+
+router.post('/:id/damage-notice-report', loadMissionForUser, async (req, res) => {
+  try {
+    const doc = createMissionDamageNoticeReport(req.mission, req.body || {});
+    const filename = `avis-dommages-mission-${req.mission.id}.pdf`;
+    await sendPdfWithoutArchive(res, {
+      filename,
+      doc,
+    });
+  } catch (error) {
+    console.error('Erreur avis des dommages PDF', error);
+    res.status(500).json({ message: "Impossible de generer l'avis des dommages" });
   }
 });
 
