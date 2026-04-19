@@ -8,11 +8,14 @@ const STAMP_SCALE = 0.67;
 const PNG_DPI = 96;
 const LEFT = 70;
 const RIGHT = 525;
+const REPORT_TITLE_MODES = ['Contradictoire', 'Collégiale'];
 
 const safe = (value) => (value === null || value === undefined || value === '' ? '' : String(value));
 const hasValue = (value) => value !== null && value !== undefined && String(value).trim() !== '';
 const valueOrDefault = (value, fallback = '') => (value === undefined || value === null ? safe(fallback) : safe(value));
 const hasOwn = (object, key) => Boolean(object) && Object.prototype.hasOwnProperty.call(object, key);
+const normalizeReportTitleMode = (value) =>
+  REPORT_TITLE_MODES.includes(value) ? value : REPORT_TITLE_MODES[0];
 
 const normalizeNumber = (value) => {
   if (value === null || value === undefined || value === '') {
@@ -188,6 +191,7 @@ const buildDefaultPayload = (mission = {}, payload = {}) => {
   const defaultValueDifference = hasValue(payload.defaultValueDifference) ? safe(payload.defaultValueDifference) : '';
 
   return {
+    reportTitleMode: normalizeReportTitleMode(payload.reportTitleMode),
     reference: safe(payload.reference || mission.missionCode || `M-${mission.id || ''}`),
     issueDate: formatDate(payload.issueDate || mission.sinistreDate),
     insuredName: safe(payload.insuredName || mission.assureNom),
@@ -262,13 +266,13 @@ const buildDefaultPayload = (mission = {}, payload = {}) => {
   };
 };
 
-const drawHeader = (doc) => {
+const drawHeader = (doc, reportTitleMode) => {
   drawBox(doc, 42, 24, PAGE_WIDTH - 84, 46);
   doc
     .font('Helvetica-Bold')
     .fontSize(17)
     .fillColor('#111111')
-    .text("Annexe 4 : Rapport d'expertise préliminaire - Contradictoire", 50, 38, {
+    .text(`Annexe 4 : Rapport d'expertise préliminaire - ${safe(reportTitleMode)}`, 50, 38, {
       width: PAGE_WIDTH - 100,
       align: 'center',
     });
@@ -454,7 +458,7 @@ const createMissionPreliminaryContradictoireReport = (mission, payload = {}) => 
   });
   const data = buildDefaultPayload(mission, payload);
 
-  drawHeader(doc);
+  drawHeader(doc, data.reportTitleMode);
   drawInfoPanel(doc, data);
   drawIntro(doc, data);
   drawVehicleTable(doc, data.vehicle);
