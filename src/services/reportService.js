@@ -1190,11 +1190,11 @@ const createMissionReport = (
         formatTableAmount(suppliesTtc),
       ],
       [
-        'Montant total',
+        'Montant total hors taxe',
         '',
         '',
         '',
-        formatTableAmount(grandTotalHt),
+        `${formatTableAmount(grandTotalHt)} HT`,
         formatTableAmount(combinedTva),
         formatTableAmount(combinedTtc),
       ],
