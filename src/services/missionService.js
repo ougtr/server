@@ -85,6 +85,7 @@ const mapMission = (mission) => {
       mission.indemnisation_finale !== null && mission.indemnisation_finale !== undefined
         ? Number(mission.indemnisation_finale)
         : null,
+    regle: Number(mission.regle) === 1,
     synthese: mission.synthese || null,
     agentId: mission.agent_id !== null ? Number(mission.agent_id) : null,
     agentLogin: mission.agent_login,
@@ -277,6 +278,12 @@ const listMissions = async ({ role, userId, filters = {}, pagination = {} }) => 
     params.push(filters.toDate);
   }
 
+  if (filters.regle === 'true' || filters.regle === true || filters.regle === '1') {
+    conditions.push('missions.regle = 1');
+  } else if (filters.regle === 'false' || filters.regle === false || filters.regle === '0') {
+    conditions.push('missions.regle = 0');
+  }
+
   const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
   const baseFromClause = `FROM missions
@@ -318,6 +325,35 @@ const listMissions = async ({ role, userId, filters = {}, pagination = {} }) => 
     pageSize: normalizedPageSize,
     latestUpdate: aggregateRow?.latestUpdate || null,
   };
+};
+
+const listMissionsForExport = async ({ role, userId }) => {
+  const conditions = [];
+  const params = [];
+
+  if (role === 'AGENT') {
+    conditions.push('missions.agent_id = ?');
+    params.push(userId);
+  }
+
+  const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const rows = await all(
+    `SELECT missions.*, users.login AS agent_login, insurers.nom AS insurer_nom, insurers.contact AS insurer_contact,
+            vehicle_brands.nom AS brand_nom,
+            garages.nom AS garage_nom_ref,
+            garages.adresse AS garage_adresse_ref,
+            garages.contact AS garage_contact_ref
+     FROM missions
+     LEFT JOIN users ON users.id = missions.agent_id
+     LEFT JOIN insurers ON insurers.id = missions.assureur_id
+     LEFT JOIN vehicle_brands ON vehicle_brands.id = missions.vehicule_marque_id
+     LEFT JOIN garages ON garages.id = missions.garage_id
+     ${whereClause}
+     ORDER BY missions.created_at DESC, missions.id DESC`,
+    params
+  );
+
+  return rows.map(mapMission);
 };
 
 const getMissionById = async (id) => {
@@ -488,12 +524,15 @@ const createMission = async (payload, currentUserId) => {
       : missionCode !== undefined && missionCode !== null
       ? String(missionCode)
       : null;
-  const responsabiliteValue =
+  let responsabiliteValue =
     typeof responsabilite === 'string'
       ? responsabilite.trim() || null
       : responsabilite !== undefined && responsabilite !== null
       ? String(responsabilite)
       : null;
+  if (garantieTypeValue?.toLowerCase() === 'rc 50%' && !responsabiliteValue) {
+    responsabiliteValue = '50%';
+  }
   const reformeTypeValue =
     typeof reformeType === 'string'
       ? reformeType.trim() || null
@@ -656,6 +695,20 @@ const updateMissionStatus = async (id, newStatus) => {
   return getMissionById(id);
 };
 
+const updateMissionRegle = async (id, regle) => {
+  const mission = await getMissionById(id);
+  if (!mission) {
+    throw new Error('Mission introuvable');
+  }
+
+  await run(
+    'UPDATE missions SET regle = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+    [regle ? 1 : 0, id]
+  );
+
+  return getMissionById(id);
+};
+
 const updateMission = async (id, payload) => {
   const current = await getMissionById(id);
   if (!current) {
@@ -812,6 +865,12 @@ const updateMission = async (id, payload) => {
       pushUpdate('garantie_franchise_taux', null);
       pushUpdate('garantie_franchise_montant', null);
     }
+    if (
+      nextGuaranteeType?.toLowerCase() === 'rc 50%' &&
+      !Object.prototype.hasOwnProperty.call(payload, 'responsabilite')
+    ) {
+      pushUpdate('responsabilite', '50%');
+    }
   }
   if (Object.prototype.hasOwnProperty.call(payload, 'garantieFranchiseTaux')) {
     const rawRate = payload.garantieFranchiseTaux;
@@ -839,7 +898,21 @@ const updateMission = async (id, payload) => {
     }
     pushUpdate('garantie_franchise_montant', amountValue);
   }
-  if (Object.prototype.hasOwnProperty.call(payload, 'responsabilite')) pushUpdate('responsabilite', payload.responsabilite);
+  if (Object.prototype.hasOwnProperty.call(payload, 'responsabilite')) {
+    const rawResponsibility = payload.responsabilite;
+    const normalizedResponsibility =
+      rawResponsibility === null || rawResponsibility === undefined
+        ? null
+        : String(rawResponsibility).trim() || null;
+    const effectiveGuaranteeType =
+      nextGuaranteeType !== undefined ? nextGuaranteeType : current.garantieType;
+    pushUpdate(
+      'responsabilite',
+      effectiveGuaranteeType?.toLowerCase() === 'rc 50%' && !normalizedResponsibility
+        ? '50%'
+        : normalizedResponsibility
+    );
+  }
   if (Object.prototype.hasOwnProperty.call(payload, 'reformeType')) {
     const rawType = payload.reformeType;
     if (rawType === null || rawType === undefined) {
@@ -927,15 +1000,14 @@ const deleteMission = async (id) => {
 
 module.exports = {
   listMissions,
+  listMissionsForExport,
   getMissionById,
   createMission,
   updateMission,
   updateMissionStatus,
+  updateMissionRegle,
   deleteMission,
 };
-
-
-
 
 
 

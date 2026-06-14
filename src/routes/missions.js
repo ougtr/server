@@ -20,7 +20,7 @@ const {
 } = require('../services/damageService');
 const { listLaborsByMission, saveLabors } = require('../services/laborService');
 const { optimizeUploadedPhoto } = require('../services/imageOptimizationService');
-const { ROLES, MISSION_STATUSES, PHOTO_LABELS } = require('../constants');
+const { ROLES, MISSION_STATUSES, PHOTO_PHASES, PHOTO_LABELS } = require('../constants');
 const { UPLOAD_DIR } = require('../config');
 const { createMissionReport } = require('../services/reportService');
 const { createMissionHonorairesReport } = require('../services/honorairesReportService');
@@ -28,6 +28,7 @@ const {
   createMissionPreliminaryContradictoireReport,
 } = require('../services/preliminaryContradictoireReportService');
 const { createMissionDamageNoticeReport } = require('../services/damageNoticeReportService');
+const { createMissionsExport } = require('../services/missionExportService');
 
 const router = express.Router();
 
@@ -159,7 +160,7 @@ const canEditMission = (req) => {
 };
 
 router.get('/', async (req, res) => {
-  const { statut, agentId, fromDate, toDate, keyword } = req.query;
+  const { statut, agentId, fromDate, toDate, keyword, regle } = req.query;
   const trimmedKeyword = typeof keyword === 'string' ? keyword.trim() : '';
 
   if (trimmedKeyword && trimmedKeyword.length < 3) {
@@ -179,6 +180,7 @@ router.get('/', async (req, res) => {
         agentId,
         fromDate,
         toDate,
+        regle,
         keyword: trimmedKeyword || undefined,
       },
       pagination: { page, pageSize },
@@ -190,6 +192,28 @@ router.get('/', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: 'Impossible de recuperer les missions' });
+  }
+});
+
+router.get('/export', async (req, res) => {
+  try {
+    const missions = await missionService.listMissionsForExport({
+      role: req.user.role,
+      userId: req.user.id,
+    });
+    const workbookBuffer = await createMissionsExport(missions);
+    const date = new Date().toISOString().slice(0, 10);
+    const filename = `export-missions-${date}.xlsx`;
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(Buffer.from(workbookBuffer));
+  } catch (error) {
+    console.error('Erreur export missions Excel', error);
+    res.status(500).json({ message: "Impossible de generer l'export des missions" });
   }
 });
 
@@ -331,6 +355,19 @@ router.patch('/:id/status', loadMissionForUser, async (req, res) => {
   }
 });
 
+router.patch('/:id/reglement', loadMissionForUser, async (req, res) => {
+  if (typeof req.body?.regle !== 'boolean') {
+    return res.status(400).json({ message: 'Valeur de reglement invalide' });
+  }
+
+  try {
+    const updated = await missionService.updateMissionRegle(req.params.id, req.body.regle);
+    res.json(updated);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
 router.delete('/:id', authorizeRoles(ROLES.GESTIONNAIRE), async (req, res) => {
   try {
     const existing = await missionService.getMissionById(req.params.id);
@@ -448,7 +485,7 @@ router.post(
       return res.status(400).json({ message: 'Aucun fichier recu' });
     }
 
-    const phase = req.body.phase === 'apres' ? 'apres' : 'avant';
+    const phase = PHOTO_PHASES.includes(req.body.phase) ? req.body.phase : 'avant';
     const label = (req.body.label || '').trim();
 
     if (!label) {

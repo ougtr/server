@@ -110,6 +110,7 @@ const initializeDatabase = async () => {
       valeur_venale REAL,
       valeur_epaves REAL,
       indemnisation_finale REAL,
+      regle INTEGER NOT NULL DEFAULT 0,
       synthese TEXT,
       sinistre_type TEXT,
       sinistre_circonstances TEXT,
@@ -149,7 +150,7 @@ const initializeDatabase = async () => {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       mission_id INTEGER NOT NULL,
       fichier TEXT NOT NULL,
-      phase TEXT CHECK (phase IN ('avant', 'apres')) DEFAULT 'avant',
+      phase TEXT CHECK (phase IN ('avant', 'en_cours', 'apres')) DEFAULT 'avant',
       label TEXT,
       uploaded_by INTEGER,
       uploaded_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -474,6 +475,14 @@ const initializeDatabase = async () => {
   }
 
   try {
+    await run('ALTER TABLE missions ADD COLUMN regle INTEGER NOT NULL DEFAULT 0');
+  } catch (error) {
+    if (!String(error.message).includes('duplicate column name')) {
+      throw error;
+    }
+  }
+
+  try {
     await run('CREATE INDEX IF NOT EXISTS idx_missions_assureur ON missions(assureur_id)');
   } catch (error) {
     // ignore index errors
@@ -495,6 +504,40 @@ const initializeDatabase = async () => {
     await run('ALTER TABLE mission_photos ADD COLUMN label TEXT');
   } catch (error) {
     if (!String(error.message).includes('duplicate column name')) {
+      throw error;
+    }
+  }
+
+  const missionPhotosTable = await get(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'mission_photos'"
+  );
+  if (missionPhotosTable?.sql && !missionPhotosTable.sql.includes("'en_cours'")) {
+    await run('BEGIN TRANSACTION');
+    try {
+      await run(`
+        CREATE TABLE mission_photos_with_en_cours (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          mission_id INTEGER NOT NULL,
+          fichier TEXT NOT NULL,
+          phase TEXT CHECK (phase IN ('avant', 'en_cours', 'apres')) DEFAULT 'avant',
+          label TEXT,
+          uploaded_by INTEGER,
+          uploaded_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(mission_id) REFERENCES missions(id) ON DELETE CASCADE,
+          FOREIGN KEY(uploaded_by) REFERENCES users(id)
+        )
+      `);
+      await run(`
+        INSERT INTO mission_photos_with_en_cours
+          (id, mission_id, fichier, phase, label, uploaded_by, uploaded_at)
+        SELECT id, mission_id, fichier, phase, label, uploaded_by, uploaded_at
+        FROM mission_photos
+      `);
+      await run('DROP TABLE mission_photos');
+      await run('ALTER TABLE mission_photos_with_en_cours RENAME TO mission_photos');
+      await run('COMMIT');
+    } catch (error) {
+      await run('ROLLBACK');
       throw error;
     }
   }

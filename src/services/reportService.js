@@ -85,6 +85,7 @@ const GUARANTEE_LABELS = {
   'bris de glace': 'Bris de glace',
   tierce: 'Tierce',
   rc: 'RC',
+  'rc 50%': 'RC 50%',
 };
 
 const guaranteeRequiresFranchise = (value) => {
@@ -101,6 +102,18 @@ const isTierceGuarantee = (value) => {
   }
   const normalized = String(value).trim().toLowerCase();
   return normalized === 'tierce' || normalized === 'bris de glace' || normalized === 'dommage collision';
+};
+
+const isRc50Guarantee = (value) => String(value || '').trim().toLowerCase() === 'rc 50%';
+
+const getEffectiveResponsibility = (guaranteeType, responsibilityValue) => {
+  if (
+    isRc50Guarantee(guaranteeType) &&
+    (responsibilityValue === null || responsibilityValue === undefined || responsibilityValue === '')
+  ) {
+    return '50%';
+  }
+  return responsibilityValue;
 };
 
 const formatGuaranteeType = (value) => {
@@ -319,7 +332,7 @@ const formatAmountInFrenchWords = (value) => {
 };
 
 const calculateFranchiseAmount = (mission, evaluationTotalTtc) => {
-  if (!mission) {
+  if (!mission || !guaranteeRequiresFranchise(mission.garantieType)) {
     return 0;
   }
   const rate = Number(mission.garantieFranchiseTaux) || 0;
@@ -343,7 +356,10 @@ const calculateIndemnisationFinale = (mission, netAfterVetusteTtc, franchiseBase
   if (isTierceGuarantee(mission?.garantieType)) {
     return amountAfterFranchise;
   }
-  return applyResponsibilityShare(amountAfterFranchise, mission?.responsabilite);
+  return applyResponsibilityShare(
+    amountAfterFranchise,
+    getEffectiveResponsibility(mission?.garantieType, mission?.responsabilite)
+  );
 };
 
 const addSectionTitle = (doc, title) => {
@@ -1215,7 +1231,10 @@ const createMissionReport = (
     ]);
 
     const guaranteeItems = [
-      ['Responsabilite', formatResponsabilite(mission.responsabilite)],
+      [
+        'Responsabilite',
+        formatResponsabilite(getEffectiveResponsibility(mission.garantieType, mission.responsabilite)),
+      ],
       ['Type de garantie', formatGuaranteeType(mission.garantieType)],
     ];
     if (guaranteeRequiresFranchise(mission.garantieType)) {

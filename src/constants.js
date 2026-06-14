@@ -7,6 +7,8 @@ const MISSION_STATUSES = ['cree', 'affectee', 'en_cours', 'terminee'];
 
 const ASSIGNABLE_ROLES = [ROLES.GESTIONNAIRE, ROLES.AGENT];
 
+const PHOTO_PHASES = ['avant', 'en_cours', 'apres'];
+
 const PHOTO_LABELS = [
   'Profil gauche - Vue laterale complete cote conducteur',
   'Profil droit - Vue laterale complete cote passager',
@@ -98,6 +100,7 @@ module.exports = {
   ROLES,
   MISSION_STATUSES,
   ASSIGNABLE_ROLES,
+  PHOTO_PHASES,
   PHOTO_LABELS,
   LABOR_CATEGORIES,
 };
