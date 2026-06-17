@@ -225,11 +225,9 @@ router.get('/:id/report', loadMissionForUser, async (req, res) => {
     ]);
     const doc = createMissionReport(req.mission, damages, labors);
     const filename = `rapport-mission-${req.mission.id}.pdf`;
-    await sendGeneratedPdf(res, {
-      missionId: req.mission.id,
+    await sendPdfWithoutArchive(res, {
       filename,
       doc,
-      uploadedBy: req.user.id,
     });
   } catch (error) {
     console.error('Erreur rapport PDF', error);
@@ -245,11 +243,9 @@ router.get('/:id/honoraires-report', loadMissionForUser, async (req, res) => {
       deplacement: req.query.deplacement,
     });
     const filename = `note-honoraires-mission-${req.mission.id}.pdf`;
-    await sendGeneratedPdf(res, {
-      missionId: req.mission.id,
+    await sendPdfWithoutArchive(res, {
       filename,
       doc,
-      uploadedBy: req.user.id,
     });
   } catch (error) {
     console.error('Erreur note honoraires PDF', error);
@@ -261,11 +257,9 @@ router.post('/:id/preliminary-contradictoire-report', loadMissionForUser, async 
   try {
     const doc = createMissionPreliminaryContradictoireReport(req.mission, req.body || {});
     const filename = `rapport-preliminaire-contradictoire-mission-${req.mission.id}.pdf`;
-    await sendGeneratedPdf(res, {
-      missionId: req.mission.id,
+    await sendPdfWithoutArchive(res, {
       filename,
       doc,
-      uploadedBy: req.user.id,
     });
   } catch (error) {
     console.error('Erreur rapport preliminaire contradictoire PDF', error);

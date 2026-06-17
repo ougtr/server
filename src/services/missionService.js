@@ -85,6 +85,10 @@ const mapMission = (mission) => {
       mission.indemnisation_finale !== null && mission.indemnisation_finale !== undefined
         ? Number(mission.indemnisation_finale)
         : null,
+    montantDevisInitial:
+      mission.montant_devis_initial !== null && mission.montant_devis_initial !== undefined
+        ? Number(mission.montant_devis_initial)
+        : null,
     regle: Number(mission.regle) === 1,
     synthese: mission.synthese || null,
     agentId: mission.agent_id !== null ? Number(mission.agent_id) : null,
@@ -409,6 +413,7 @@ const createMission = async (payload, currentUserId) => {
     valeurVenale,
     valeurEpaves,
     indemnisationFinale,
+    montantDevisInitial,
     synthese,
     missionCode,
 
@@ -549,6 +554,7 @@ const createMission = async (payload, currentUserId) => {
   const valeurAssureeValue = normalizeAmount(valeurAssuree);
   const valeurVenaleValue = normalizeAmount(valeurVenale);
   const valeurEpavesValue = normalizeAmount(valeurEpaves);
+  const montantDevisInitialValue = normalizeAmount(montantDevisInitial);
   const syntheseValue =
     typeof synthese === 'string'
       ? synthese.trim() || null
@@ -606,6 +612,7 @@ const createMission = async (payload, currentUserId) => {
       valeur_venale,
       valeur_epaves,
       indemnisation_finale,
+      montant_devis_initial,
       synthese,
       statut,
       created_by
@@ -614,7 +621,8 @@ const createMission = async (payload, currentUserId) => {
       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      ?
     )`,
     [
       insurer.nom,
@@ -664,6 +672,7 @@ const createMission = async (payload, currentUserId) => {
       valeurVenaleValue,
       valeurEpavesValue,
       indemnisationValue,
+      montantDevisInitialValue,
       syntheseValue,
       initialStatus,
       currentUserId,
@@ -959,6 +968,15 @@ const updateMission = async (id, payload) => {
     }
     pushUpdate('indemnisation_finale', normalized);
   }
+  if (Object.prototype.hasOwnProperty.call(payload, 'montantDevisInitial')) {
+    const amount = payload.montantDevisInitial;
+    let normalized = null;
+    if (amount !== '' && amount !== null && amount !== undefined) {
+      const numeric = Number(amount);
+      normalized = Number.isNaN(numeric) ? null : numeric;
+    }
+    pushUpdate('montant_devis_initial', normalized);
+  }
   if (Object.prototype.hasOwnProperty.call(payload, 'synthese')) {
     const text = payload.synthese;
     if (text === null || text === undefined) {
@@ -1008,7 +1026,6 @@ module.exports = {
   updateMissionRegle,
   deleteMission,
 };
-
 
 
 

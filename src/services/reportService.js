@@ -27,6 +27,17 @@ const formatCurrency = (value) => {
   return `${amount.toFixed(2)} MAD`;
 };
 
+const formatOptionalPositiveCurrency = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return '-';
+  }
+  const amount = Number(value);
+  if (Number.isFinite(amount) && amount === 0) {
+    return '-';
+  }
+  return Number.isFinite(amount) ? `${amount.toFixed(2)} MAD` : String(value);
+};
+
 const formatTableAmount = (value) => {
   const amount = Number(value) || 0;
   return amount.toFixed(2);
@@ -1253,6 +1264,7 @@ const createMissionReport = (
     ]);
 
     addInlineSummaryTable(doc, [
+      ['Montant devis initial', formatOptionalPositiveCurrency(mission.montantDevisInitial)],
       ['Vetuste TTC', formatCurrency(damageVetusteLoss)],
       ['Indemnisation finale', formatCurrency(indemnisationValue), { emphasizeValue: true }],
     ]);
