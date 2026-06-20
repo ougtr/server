@@ -1,6 +1,7 @@
 const PDFDocument = require('pdfkit');
 const path = require('path');
 const fs = require('fs');
+const { UPLOAD_DIR } = require('../config');
 
 const formatDate = (value) => {
   if (!value) {
@@ -47,6 +48,28 @@ const REPORT_ACCENT_COLOR = '#d90429';
 const REPORT_ACCENT_SOFT_COLOR = '#fecdd3';
 const PNG_DPI = 96;
 const REPORT_STAMP_SCALE = 0.67;
+
+const isHexColor = (value) => /^#[0-9a-f]{6}$/i.test(String(value || '').trim());
+const settingValue = (settings, key, fallback = '') => {
+  const value = settings?.[key];
+  return value === null || value === undefined || value === '' ? fallback : String(value);
+};
+const resolveUploadedAsset = (relativePath) => {
+  if (!relativePath) {
+    return null;
+  }
+  const absolutePath = path.resolve(UPLOAD_DIR, relativePath);
+  const uploadRoot = path.resolve(UPLOAD_DIR);
+  if (!absolutePath.startsWith(uploadRoot) || !fs.existsSync(absolutePath)) {
+    return null;
+  }
+  return absolutePath;
+};
+const getPrimaryColor = (settings) =>
+  isHexColor(settings?.rapportCouleurPrimaire) ? settings.rapportCouleurPrimaire : REPORT_ACCENT_COLOR;
+const getSecondaryColor = (settings) =>
+  isHexColor(settings?.rapportCouleurSecondaire) ? settings.rapportCouleurSecondaire : '#111827';
+const getSoftPrimaryColor = (settings) => getPrimaryColor(settings);
 
 const ENERGY_LABELS = {
   diesel: 'Diesel',
@@ -373,12 +396,12 @@ const calculateIndemnisationFinale = (mission, netAfterVetusteTtc, franchiseBase
   );
 };
 
-const addSectionTitle = (doc, title) => {
+const addSectionTitle = (doc, title, settings = {}) => {
   doc.x = doc.page.margins.left;
   doc.moveDown(0.22);
   doc.fontSize(12).font('Helvetica-Bold').fillColor('#0f172a').text(title.toUpperCase());
   doc
-    .strokeColor(REPORT_ACCENT_SOFT_COLOR)
+    .strokeColor(getSoftPrimaryColor(settings))
     .lineWidth(1)
     .moveTo(doc.page.margins.left, doc.y + 2)
     .lineTo(doc.page.width - doc.page.margins.right, doc.y + 2)
@@ -413,7 +436,7 @@ const addTwoColumnRows = (doc, rows) => {
   doc.moveDown(0.15);
 };
 
-const addDualInfoColumns = (doc, leftConfig, rightConfig) => {
+const addDualInfoColumns = (doc, leftConfig, rightConfig, settings = {}) => {
   const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const columnGap = 12;
   const columnWidth = (usableWidth - columnGap) / 2;
@@ -422,7 +445,7 @@ const addDualInfoColumns = (doc, leftConfig, rightConfig) => {
   const renderColumn = ({ title, rows }, x) => {
     let currentY = startY;
 
-    doc.font('Helvetica-Bold').fontSize(9.5).fillColor(REPORT_ACCENT_COLOR).text(title, x, currentY, {
+    doc.font('Helvetica-Bold').fontSize(9.5).fillColor(getPrimaryColor(settings)).text(title, x, currentY, {
       width: columnWidth,
     });
     currentY = doc.y + 1;
@@ -450,7 +473,7 @@ const addDualInfoColumns = (doc, leftConfig, rightConfig) => {
   doc.moveDown(0.1);
 };
 
-const addCompactVehicleColumns = (doc, mission) => {
+const addCompactVehicleColumns = (doc, mission, settings = {}) => {
   const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const columnGap = 10;
   const firstWidth = usableWidth * 0.31;
@@ -467,7 +490,7 @@ const addCompactVehicleColumns = (doc, mission) => {
       doc
         .font('Helvetica-Bold')
         .fontSize(9.2)
-        .fillColor(REPORT_ACCENT_COLOR)
+        .fillColor(getPrimaryColor(settings))
         .text(title, x, currentY, { width, align: 'left' });
       currentY = doc.y + 2;
     }
@@ -521,7 +544,7 @@ const addCompactVehicleColumns = (doc, mission) => {
     doc
       .save()
       .lineWidth(0.5)
-      .strokeColor('#e2e8f0')
+      .strokeColor(getSoftPrimaryColor(settings))
       .moveTo(dividerX, dividerTop)
       .lineTo(dividerX, bottomY - 1)
       .stroke()
@@ -532,7 +555,7 @@ const addCompactVehicleColumns = (doc, mission) => {
   doc.x = doc.page.margins.left;
 };
 
-const addCompactPrimaryInfoColumns = (doc, mission) => {
+const addCompactPrimaryInfoColumns = (doc, mission, settings = {}) => {
   const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const columnGap = 10;
   const columnWidth = (usableWidth - columnGap * 2) / 3;
@@ -582,7 +605,7 @@ const addCompactPrimaryInfoColumns = (doc, mission) => {
     doc
       .save()
       .lineWidth(0.5)
-      .strokeColor('#e2e8f0')
+      .strokeColor(getSoftPrimaryColor(settings))
       .moveTo(dividerX, dividerTop)
       .lineTo(dividerX, bottomY - 1)
       .stroke()
@@ -622,7 +645,7 @@ const addFramedSection = (doc, title, renderContent, options = {}) => {
   doc
     .save()
     .lineWidth(1)
-    .strokeColor(REPORT_ACCENT_SOFT_COLOR)
+    .strokeColor(getSoftPrimaryColor(options.settings))
     .roundedRect(frameLeft, frameTop, frameWidth, frameHeight, 6)
     .stroke()
     .restore();
@@ -645,7 +668,7 @@ const addFramedSection = (doc, title, renderContent, options = {}) => {
   doc.moveDown(0.04);
 };
 
-const addInlineSummaryTable = (doc, items) => {
+const addInlineSummaryTable = (doc, items, settings = {}) => {
   if (!items || !items.length) {
     return;
   }
@@ -703,7 +726,7 @@ const addInlineSummaryTable = (doc, items) => {
   const startY = doc.y;
   doc
     .lineWidth(0.5)
-    .strokeColor(REPORT_ACCENT_SOFT_COLOR)
+    .strokeColor(getSoftPrimaryColor(settings))
     .rect(doc.page.margins.left, startY, usableWidth, rowHeight)
     .stroke();
 
@@ -732,7 +755,7 @@ const addInlineSummaryTable = (doc, items) => {
   doc.y = startY + rowHeight + 1;
 };
 
-const addClosingAmountLine = (doc, amountInWords) => {
+const addClosingAmountLine = (doc, amountInWords, settings = {}) => {
   const text = `Arrête le présent rapport d’expertise à la somme de : '${safeValue(amountInWords)} DHS'`;
   const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
 
@@ -746,7 +769,7 @@ const addClosingAmountLine = (doc, amountInWords) => {
 
   doc
     .lineWidth(0.5)
-    .strokeColor(REPORT_ACCENT_SOFT_COLOR)
+    .strokeColor(getSoftPrimaryColor(settings))
     .rect(doc.page.margins.left, top, width, rowHeight)
     .stroke();
 
@@ -774,7 +797,7 @@ const addTableSection = (doc, headers, rows, firstColumnRatio = 0.2, options = {
   };
   const drawHeader = () => {
     const startY = doc.y;
-    doc.save().fillColor(REPORT_ACCENT_COLOR).rect(doc.page.margins.left, startY, tableWidth, headerHeight).fill();
+    doc.save().fillColor(getPrimaryColor(options.settings)).rect(doc.page.margins.left, startY, tableWidth, headerHeight).fill();
 
     doc.font('Helvetica-Bold').fontSize(9).fillColor('#ffffff');
     let headerX = doc.page.margins.left;
@@ -809,7 +832,7 @@ const addTableSection = (doc, headers, rows, firstColumnRatio = 0.2, options = {
 
     const rowY = doc.y;
     doc
-      .strokeColor('#e2e8f0')
+      .strokeColor(getSoftPrimaryColor(options.settings))
       .lineWidth(0.5)
       .rect(doc.page.margins.left, rowY, tableWidth, effectiveRowHeight)
       .stroke();
@@ -834,9 +857,9 @@ const addTableSection = (doc, headers, rows, firstColumnRatio = 0.2, options = {
   doc.x = doc.page.margins.left;
 };
 
-const addObservationSection = (doc, mission) => {
+const addObservationSection = (doc, mission, settings = {}) => {
   doc.moveDown(0.6);
-  addSectionTitle(doc, 'Observations');
+  addSectionTitle(doc, 'Observations', settings);
   const content =
     typeof mission.synthese === 'string' && mission.synthese.trim().length
       ? mission.synthese.trim()
@@ -852,11 +875,15 @@ const REPORT_SIGNATURE_BOX_HEIGHT = 85;
 const REPORT_SIGNATURE_GAP = 8;
 const REPORT_PAGE_BOTTOM_RESERVED = REPORT_FOOTER_HEIGHT + REPORT_SIGNATURE_BOX_HEIGHT + REPORT_SIGNATURE_GAP + 6;
 
-const resolveStampImage = () => {
+const resolveStampImage = (settings = {}) => {
+  const customStamp = resolveUploadedAsset(settings.cachetPath);
+  if (customStamp) {
+    return customStamp;
+  }
   const projectRoot = path.resolve(__dirname, '..', '..', '..');
   const candidates = [
-    path.join(projectRoot, 'server', 'cachet-opale.png'),
-    path.join(__dirname, '..', '..', 'cachet-opale.png'),
+    path.join(projectRoot, 'server', 'default-logo.png'),
+    path.join(__dirname, '..', '..', 'default-logo.png'),
   ];
   return candidates.find((imagePath) => fs.existsSync(imagePath)) || null;
 };
@@ -882,7 +909,19 @@ const readPngDimensions = (imagePath) => {
   }
 };
 
-const addPageSignatureBlock = (doc) => {
+const getContainedImageSize = (imagePath, maxWidth, maxHeight) => {
+  const dimensions = readPngDimensions(imagePath);
+  if (!dimensions?.width || !dimensions?.height) {
+    return { width: maxWidth, height: maxHeight };
+  }
+  const ratio = Math.min(maxWidth / dimensions.width, maxHeight / dimensions.height);
+  return {
+    width: Math.max(1, dimensions.width * ratio),
+    height: Math.max(1, dimensions.height * ratio),
+  };
+};
+
+const addPageSignatureBlock = (doc, settings = {}) => {
   const previousX = doc.x;
   const previousY = doc.y;
   const previousBottomMargin = doc.page.margins.bottom;
@@ -891,7 +930,7 @@ const addPageSignatureBlock = (doc) => {
   const boxX = doc.page.width - doc.page.margins.right - REPORT_SIGNATURE_BOX_WIDTH;
   const boxY = footerTop - REPORT_SIGNATURE_BOX_HEIGHT - REPORT_SIGNATURE_GAP;
   const textY = boxY + 2;
-  const stampPath = resolveStampImage();
+  const stampPath = resolveStampImage(settings);
   const signatureLabelX = boxX + 10;
   const signatureLabelY = boxY + 8;
   const signatureLabelWidth = 76;
@@ -948,7 +987,7 @@ const addPageSignatureBlock = (doc) => {
   doc.page.margins.bottom = previousBottomMargin;
 };
 
-const addReportFooter = (doc) => {
+const addReportFooter = (doc, settings = {}) => {
   const previousX = doc.x;
   const previousY = doc.y;
   const previousBottomMargin = doc.page.margins.bottom;
@@ -959,8 +998,8 @@ const addReportFooter = (doc) => {
   const footerTop = pageHeight - REPORT_FOOTER_HEIGHT;
   const bannerTop = footerTop;
   const legalTop = footerTop + bannerHeight;
-  const contentLeft = 32;
-  const footerImagePath = resolveFooterImage();
+  const contentLeft = 28;
+  const footerImagePath = resolveFooterImage(settings);
 
   if (footerImagePath) {
     doc.page.margins.bottom = 0;
@@ -982,73 +1021,149 @@ const addReportFooter = (doc) => {
 
   doc
     .save()
-    .fillColor('#d90429')
+    .fillColor(getPrimaryColor(settings))
     .rect(0, bannerTop, pageWidth, bannerHeight)
     .fill()
     .restore();
 
   doc
     .save()
-    .fillColor('#111827')
+    .fillColor(getSecondaryColor(settings))
     .rect(0, legalTop, pageWidth, legalBarHeight)
     .fill()
     .restore();
 
-  const contactLines = [
-    'Lotissement Selouane n°36, 1er etage, Oulfa, Hay Hassani, Casablanca.',
-    '+212 521 23 54 86 / +212 660 48 87 85',
-    'contact@opaleexpertiseautomobile.com',
-    'www.opaleexpertiseautomobile.com',
+  const contactRows = [
+    [
+      ['cabinet', settingValue(settings, 'cabinetNom', 'Expert auto'), true],
+      ['address', settingValue(settings, 'cabinetAdresse', 'Adresse a configurer')],
+    ],
+    [
+      ['phone', settingValue(settings, 'cabinetTelephone', 'Telephone a configurer')],
+      ['email', settingValue(settings, 'cabinetEmail', 'contact@expert-auto.ma')],
+      ['web', settingValue(settings, 'cabinetSiteWeb', 'www.expert-auto.ma')],
+    ],
   ];
-
-  if (contactLines.length) {
-    contactLines[0] = 'Lotissement Selouane no 36, 1er etage, Oulfa, Hay Hassani, Casablanca.';
+  const extraFooter = settingValue(settings, 'rapportFooter', '');
+  if (extraFooter) {
+    contactRows[1].push(['info', extraFooter]);
   }
 
-  let textY = bannerTop + 5;
-  contactLines.forEach((line, index) => {
+  const drawFooterIcon = (type, x, y) => {
+    const top = y + 0.5;
+    doc.save().lineWidth(1).strokeColor('#ffffff').fillColor('#ffffff');
+
+    if (type === 'phone') {
+      doc
+        .roundedRect(x + 3, top + 1, 6, 10, 2)
+        .stroke()
+        .circle(x + 6, top + 9.2, 0.7)
+        .fill();
+    } else if (type === 'email') {
+      doc.rect(x + 1, top + 2, 11, 8).stroke();
+      doc
+        .moveTo(x + 1, top + 2)
+        .lineTo(x + 6.5, top + 6.7)
+        .lineTo(x + 12, top + 2)
+        .stroke();
+    } else if (type === 'web') {
+      doc.circle(x + 6.5, top + 6, 5.2).stroke();
+      doc
+        .moveTo(x + 1.3, top + 6)
+        .lineTo(x + 11.7, top + 6)
+        .moveTo(x + 6.5, top + 0.8)
+        .lineTo(x + 6.5, top + 11.2)
+        .moveTo(x + 3.2, top + 2.2)
+        .bezierCurveTo(x + 5, top + 3.8, x + 8, top + 3.8, x + 9.8, top + 2.2)
+        .moveTo(x + 3.2, top + 9.8)
+        .bezierCurveTo(x + 5, top + 8.2, x + 8, top + 8.2, x + 9.8, top + 9.8)
+        .stroke();
+    } else if (type === 'address') {
+      doc
+        .circle(x + 6.5, top + 5, 4.2)
+        .stroke()
+        .circle(x + 6.5, top + 5, 1.1)
+        .fill()
+        .moveTo(x + 4.1, top + 8.4)
+        .lineTo(x + 6.5, top + 11.5)
+        .lineTo(x + 8.9, top + 8.4)
+        .stroke();
+    } else if (type === 'info') {
+      doc
+        .circle(x + 6.5, top + 6, 5)
+        .stroke()
+        .font('Helvetica-Bold')
+        .fontSize(8.5)
+        .text('i', x + 5.4, top + 2.2, { width: 4, lineBreak: false });
+    } else {
+      doc
+        .rect(x + 2, top + 3, 9, 8)
+        .stroke()
+        .moveTo(x + 1.3, top + 3)
+        .lineTo(x + 6.5, top)
+        .lineTo(x + 11.7, top + 3)
+        .stroke();
+    }
+
+    doc.restore();
+  };
+
+  const drawContactItem = ([icon, value, bold], x, y, width) => {
+    const iconWidth = 17;
+    drawFooterIcon(icon, x, y - 1);
     doc
-      .font(index === 0 ? 'Helvetica-Bold' : 'Helvetica')
-      .fontSize(index === 0 ? 8.6 : 8.4)
+      .font(bold ? 'Helvetica-Bold' : 'Helvetica')
+      .fontSize(bold ? 8.3 : 7.8)
       .fillColor('#ffffff')
-      .text(line, contentLeft, textY, {
-        width: pageWidth - contentLeft - 120,
-        align: 'left',
+      .text(String(value), x + iconWidth, y, {
+        width: width - iconWidth - 4,
         lineBreak: false,
+        ellipsis: true,
       });
-    textY += 10.2;
+  };
+
+  const rowWidth = pageWidth - contentLeft * 2;
+  const firstRowWidths = [rowWidth * 0.28, rowWidth * 0.72];
+  const secondRowWidths = [rowWidth * 0.25, rowWidth * 0.34, rowWidth * 0.25, rowWidth * 0.16];
+  const rowY = [bannerTop + 9, bannerTop + 29];
+
+  let currentX = contentLeft;
+  contactRows[0].forEach((item, index) => {
+    drawContactItem(item, currentX, rowY[0], firstRowWidths[index]);
+    currentX += firstRowWidths[index];
+  });
+
+  currentX = contentLeft;
+  contactRows[1].forEach((item, index) => {
+    const width = secondRowWidths[index] || secondRowWidths[secondRowWidths.length - 1];
+    drawContactItem(item, currentX, rowY[1], width);
+    currentX += width;
   });
 
   doc
     .font('Helvetica-Bold')
     .fontSize(7.4)
     .fillColor('#ffffff')
-    .text('PATENTE : 33102094 - RC : 699185 - IF : 68749636 - ICE : 003823925000049', 0, legalTop + 3.2, {
-      width: pageWidth,
-      align: 'center',
-      lineBreak: false,
-    });
-
-  const markX = pageWidth - 74;
-  const markY = bannerTop + 6;
-  doc.save().lineWidth(4).strokeColor('#ffffff').opacity(0.95);
-  doc
-    .moveTo(markX, markY + 5)
-    .lineTo(markX + 13, markY)
-    .lineTo(markX + 52, markY + 14)
-    .lineTo(markX + 26, markY + 36)
-    .lineTo(markX + 5, markY + 18)
-    .closePath()
-    .stroke();
-  doc
-    .moveTo(markX + 13, markY)
-    .lineTo(markX + 17, markY + 38)
-    .moveTo(markX + 30, markY + 6)
-    .lineTo(markX + 8, markY + 29)
-    .moveTo(markX + 46, markY + 13)
-    .lineTo(markX + 23, markY + 35)
-    .stroke();
-  doc.restore();
+    .text(
+      settingValue(
+        settings,
+        'mentionsLegales',
+        [
+          settings?.registreCommerce ? `RC : ${settings.registreCommerce}` : '',
+          settings?.identifiantFiscal ? `IF : ${settings.identifiantFiscal}` : '',
+          settings?.ice ? `ICE : ${settings.ice}` : '',
+          settings?.cnss ? `CNSS : ${settings.cnss}` : '',
+        ].filter(Boolean).join(' - ') || 'Mentions legales a configurer'
+      ),
+      0,
+      legalTop + 3.2,
+      {
+        width: pageWidth,
+        align: 'center',
+        lineBreak: false,
+        ellipsis: true,
+      }
+    );
 
   } finally {
     doc.page.margins.bottom = previousBottomMargin;
@@ -1057,35 +1172,34 @@ const addReportFooter = (doc) => {
   }
 };
 
-const addPageDecorations = (doc) => {
-  addPageSignatureBlock(doc);
-  addReportFooter(doc);
+const addPageDecorations = (doc, settings = {}) => {
+  addPageSignatureBlock(doc, settings);
+  addReportFooter(doc, settings);
 };
 
-const resolveLogo = () => {
+const resolveLogo = (settings = {}) => {
+  const customLogo = resolveUploadedAsset(settings.logoPath);
+  if (customLogo) {
+    return customLogo;
+  }
   const projectRoot = path.resolve(__dirname, '..', '..', '..');
   const candidates = [
-    path.join(projectRoot, 'client', 'public', 'opale.jpg'),
-    path.join(__dirname, '..', '..', 'public', 'opale.jpg'),
-    path.join(__dirname, '..', 'public', 'opale.jpg'),
+    path.join(projectRoot, 'client', 'public', 'default-logo.png'),
+    path.join(projectRoot, 'server', 'default-logo.png'),
+    path.join(__dirname, '..', '..', 'default-logo.png'),
   ];
   return candidates.find((logoPath) => fs.existsSync(logoPath)) || null;
 };
 
-const resolveFooterImage = () => {
-  const projectRoot = path.resolve(__dirname, '..', '..', '..');
-  const candidates = [
-    path.join(projectRoot, 'server', 'opale-en-pied.png'),
-    path.join(__dirname, '..', '..', 'opale-en-pied.png'),
-    'C:\\Users\\thinbook\\git\\gestion-mission\\server\\opale-en-pied.png',
-  ];
-  return candidates.find((imagePath) => fs.existsSync(imagePath)) || null;
+const resolveFooterImage = (settings = {}) => {
+  return null;
 };
 
 const createMissionReport = (
   mission,
   damageData = { items: [], totals: {} },
-  laborData = { entries: [], totals: {} }
+  laborData = { entries: [], totals: {} },
+  settings = {}
 ) => {
   const doc = new PDFDocument({
     size: 'A4',
@@ -1094,18 +1208,23 @@ const createMissionReport = (
   const missionLabel = mission.missionCode ? mission.missionCode : `#${mission.id}`;
 
   doc.on('pageAdded', () => {
-    addPageDecorations(doc);
+    addPageDecorations(doc, settings);
   });
-  addPageDecorations(doc);
+  addPageDecorations(doc, settings);
 
-  const logoPath = resolveLogo();
+  const logoPath = resolveLogo(settings);
   if (logoPath) {
     try {
-      doc.image(logoPath, doc.page.margins.left, doc.y, { width: 175 });
+      const logoSize = getContainedImageSize(logoPath, 260, 55);
+      doc.image(logoPath, doc.page.margins.left, doc.y, logoSize);
     } catch (error) {
       // ignore logo rendering errors
     }
     doc.moveDown(0.2);
+  } else if (settings?.cabinetNom) {
+    doc.fontSize(16).font('Helvetica-Bold').fillColor(getPrimaryColor(settings)).text(settings.cabinetNom, {
+      width: 220,
+    });
   }
 
   doc.fontSize(18).font('Helvetica-Bold').fillColor('#0f172a').text('Rapport d\'expertise', { align: 'right' });
@@ -1128,12 +1247,12 @@ const createMissionReport = (
   const indemnisationValue = calculateIndemnisationFinale(mission, netAfterVetusteTtc, franchiseBaseTtc);
 
   addFramedSection(doc, 'Informations principales', () => {
-    addCompactPrimaryInfoColumns(doc, mission);
-  });
+    addCompactPrimaryInfoColumns(doc, mission, settings);
+  }, { settings });
 
   addFramedSection(doc, 'Vehicule', () => {
-    addCompactVehicleColumns(doc, mission);
-  });
+    addCompactVehicleColumns(doc, mission, settings);
+  }, { settings });
 
   addFramedSection(doc, 'Sinistre', () => {
     addDualInfoColumns(
@@ -1157,9 +1276,10 @@ const createMissionReport = (
           ['Compagnie', mission.assureurAdverseNom],
           ['Date de survenance', formatDate(mission.sinistreDate)],
         ],
-      }
+      },
+      settings
     );
-  });
+  }, { settings });
 
   addFramedSection(
     doc,
@@ -1170,11 +1290,11 @@ const createMissionReport = (
         ['Adresse garage', mission.garageAdresse, '', ''],
       ]);
     },
-    { bottomPadding: 8, minHeight: 38 }
+    { bottomPadding: 8, minHeight: 38, settings }
   );
 
   if (laborData.entries && laborData.entries.length) {
-    addSectionTitle(doc, 'Evaluation de la remise en etat');
+    addSectionTitle(doc, 'Evaluation de la remise en etat', settings);
 
     const laborRows = laborData.entries.map((entry) => [
       entry.label,
@@ -1232,14 +1352,14 @@ const createMissionReport = (
       ['Main d\'oeuvre', 'Nbr H.', 'Taux horaire', 'TVA', 'Hors taxe', 'T.V.A', 'Total TTC'],
       [...laborRows, ...summaryRows],
       0.24,
-      { headerHeight: 20, rowMinHeight: 14, rowPadding: 4 }
+      { headerHeight: 20, rowMinHeight: 14, rowPadding: 4, settings }
     );
 
     addInlineSummaryTable(doc, [
       ['Total main d\'oeuvre (TTC)', formatCurrency(laborTtc)],
       ['Fournitures (TTC)', formatCurrency(suppliesTtc)],
       ['Montant total (TTC)', formatCurrency(combinedTtc), { emphasizeValue: true }],
-    ]);
+    ], settings);
 
     const guaranteeItems = [
       [
@@ -1254,28 +1374,28 @@ const createMissionReport = (
         ['Franchise', formatFranchiseAmount(franchiseCalculee)]
       );
     }
-    addInlineSummaryTable(doc, guaranteeItems);
+    addInlineSummaryTable(doc, guaranteeItems, settings);
 
     addInlineSummaryTable(doc, [
       ['Reforme', formatReformeType(mission.reformeType)],
       ['Valeur assuree', formatPlainNumber(mission.valeurAssuree)],
       ['Valeur venale', formatPlainNumber(mission.valeurVenale)],
       ['Valeur epaves', formatPlainNumber(mission.valeurEpaves)],
-    ]);
+    ], settings);
 
     addInlineSummaryTable(doc, [
       ['Montant devis initial', formatOptionalPositiveCurrency(mission.montantDevisInitial)],
       ['Vetuste TTC', formatCurrency(damageVetusteLoss)],
       ['Indemnisation finale', formatCurrency(indemnisationValue), { emphasizeValue: true }],
-    ]);
-    addClosingAmountLine(doc, formatAmountInFrenchWords(indemnisationValue));
+    ], settings);
+    addClosingAmountLine(doc, formatAmountInFrenchWords(indemnisationValue), settings);
 
     doc.moveDown(0.3);
   }
 
   if (damageData.items && damageData.items.length) {
     doc.addPage();
-    addSectionTitle(doc, 'Description des dommages');
+    addSectionTitle(doc, 'Description des dommages', settings);
 
     const damageRows = damageData.items.map((item) => {
       const priceHt = item.priceHt || 0;
@@ -1315,13 +1435,14 @@ const createMissionReport = (
         'Apres vetuste (TTC)',
       ],
       [...damageRows, ...summaryRows],
-      0.18
+      0.18,
+      { settings }
     );
 
-    addObservationSection(doc, mission);
+    addObservationSection(doc, mission, settings);
   } else {
     doc.addPage();
-    addObservationSection(doc, mission);
+    addObservationSection(doc, mission, settings);
   }
 
   return doc;

@@ -1,6 +1,7 @@
 const PDFDocument = require('pdfkit');
 const path = require('path');
 const fs = require('fs');
+const { UPLOAD_DIR } = require('../config');
 
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
@@ -11,6 +12,21 @@ const STAMP_SCALE = 0.67;
 
 const safe = (value) => (value === null || value === undefined || value === '' ? '' : String(value));
 const hasOwn = (object, key) => Boolean(object) && Object.prototype.hasOwnProperty.call(object, key);
+const settingValue = (settings, key, fallback = '') => {
+  const value = settings?.[key];
+  return value === null || value === undefined || value === '' ? fallback : String(value);
+};
+const resolveUploadedAsset = (relativePath) => {
+  if (!relativePath) {
+    return null;
+  }
+  const absolutePath = path.resolve(UPLOAD_DIR, relativePath);
+  const uploadRoot = path.resolve(UPLOAD_DIR);
+  if (!absolutePath.startsWith(uploadRoot) || !fs.existsSync(absolutePath)) {
+    return null;
+  }
+  return absolutePath;
+};
 
 const formatDate = (value) => {
   if (!value) {
@@ -37,11 +53,15 @@ const formatDate = (value) => {
   return `${day}/${month}/${year}`;
 };
 
-const resolveStampImage = () => {
+const resolveStampImage = (settings = {}) => {
+  const customStamp = resolveUploadedAsset(settings.cachetPath);
+  if (customStamp) {
+    return customStamp;
+  }
   const projectRoot = path.resolve(__dirname, '..', '..', '..');
   const candidates = [
-    path.join(projectRoot, 'server', 'cachet-opale.png'),
-    path.join(__dirname, '..', '..', 'cachet-opale.png'),
+    path.join(projectRoot, 'server', 'default-logo.png'),
+    path.join(__dirname, '..', '..', 'default-logo.png'),
   ];
   return candidates.find((imagePath) => fs.existsSync(imagePath)) || null;
 };
@@ -67,8 +87,8 @@ const readPngDimensions = (imagePath) => {
   }
 };
 
-const drawStamp = (doc, x, y, width = 165) => {
-  const stampPath = resolveStampImage();
+const drawStamp = (doc, x, y, width = 165, settings = {}) => {
+  const stampPath = resolveStampImage(settings);
   if (!stampPath) {
     return;
   }
@@ -85,12 +105,12 @@ const drawStamp = (doc, x, y, width = 165) => {
   }
 };
 
-const buildDefaultPayload = (mission = {}, payload = {}) => {
+const buildDefaultPayload = (mission = {}, payload = {}, settings = {}) => {
   const subjectVehicleLabel = [mission.vehiculeMarque, mission.vehiculeModele].filter(Boolean).join(' ');
   const today = formatDate(new Date().toISOString());
 
   return {
-    city: hasOwn(payload, 'city') ? safe(payload.city) : 'Casablanca',
+    city: hasOwn(payload, 'city') ? safe(payload.city) : settingValue(settings, 'villeDefaut', 'Casablanca'),
     reportDate: hasOwn(payload, 'reportDate') ? safe(payload.reportDate) : today,
     recipientInsurer: hasOwn(payload, 'recipientInsurer') ? safe(payload.recipientInsurer) : safe(mission.assureurNom),
     recipientAddressLine1: hasOwn(payload, 'recipientAddressLine1')
@@ -132,16 +152,18 @@ const buildDefaultPayload = (mission = {}, payload = {}) => {
     closingLine: hasOwn(payload, 'closingLine')
       ? safe(payload.closingLine)
       : "Veuillez agreer, Messieurs, l'expression de mes salutations distinguees.",
-    signatureLabel: hasOwn(payload, 'signatureLabel') ? safe(payload.signatureLabel) : 'OPALE EXPERTISE',
+    signatureLabel: hasOwn(payload, 'signatureLabel')
+      ? safe(payload.signatureLabel)
+      : settingValue(settings, 'cabinetNom', 'Expert auto'),
   };
 };
 
-const createMissionDamageNoticeReport = (mission, payload = {}) => {
+const createMissionDamageNoticeReport = (mission, payload = {}, settings = {}) => {
   const doc = new PDFDocument({
     size: 'A4',
     margin: 0,
   });
-  const data = buildDefaultPayload(mission, payload);
+  const data = buildDefaultPayload(mission, payload, settings);
 
   doc.font('Times-Roman').fillColor('#111111');
 
@@ -243,7 +265,7 @@ const createMissionDamageNoticeReport = (mission, payload = {}) => {
     align: 'center',
     underline: true,
   });
-  drawStamp(doc, 346, 680, 158);
+  drawStamp(doc, 346, 680, 158, settings);
 
   return doc;
 };

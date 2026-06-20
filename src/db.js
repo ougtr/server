@@ -10,6 +10,9 @@ if (!fs.existsSync(dbDir)) {
 
 const db = new sqlite3.Database(DB_PATH);
 
+const DEFAULT_TENANT_SLUG = 'default';
+const DEFAULT_TENANT_NAME = 'Cabinet par defaut';
+
 const run = (sql, params = []) =>
   new Promise((resolve, reject) => {
     db.run(sql, params, function runCallback(err) {
@@ -45,45 +48,96 @@ const all = (sql, params = []) =>
 
 const initializeDatabase = async () => {
   await run(`
+    CREATE TABLE IF NOT EXISTS tenants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nom TEXT NOT NULL,
+      slug TEXT UNIQUE NOT NULL,
+      actif INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS tenant_settings (
+      tenant_id INTEGER PRIMARY KEY,
+      cabinet_nom TEXT,
+      cabinet_adresse TEXT,
+      cabinet_telephone TEXT,
+      cabinet_email TEXT,
+      cabinet_site_web TEXT,
+      rib TEXT,
+      banque TEXT,
+      logo_path TEXT,
+      cachet_path TEXT,
+      ice TEXT,
+      identifiant_fiscal TEXT,
+      registre_commerce TEXT,
+      cnss TEXT,
+      expert_nom TEXT,
+      ville_defaut TEXT,
+      mission_reference_prefix TEXT,
+      rapport_couleur_primaire TEXT,
+      rapport_couleur_secondaire TEXT,
+      mentions_legales TEXT,
+      rapport_footer TEXT,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+    )
+  `);
+
+  await run(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER,
       login TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
-      role TEXT NOT NULL CHECK (role IN ('GESTIONNAIRE', 'AGENT')),
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      role TEXT NOT NULL CHECK (role IN ('SUPER_ADMIN', 'ADMIN_CABINET', 'GESTIONNAIRE', 'AGENT')),
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(tenant_id) REFERENCES tenants(id)
     )
   `);
 
   await run(`
     CREATE TABLE IF NOT EXISTS insurers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      nom TEXT UNIQUE NOT NULL,
+      tenant_id INTEGER,
+      nom TEXT NOT NULL,
       contact TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(tenant_id, nom),
+      FOREIGN KEY(tenant_id) REFERENCES tenants(id)
     )
   `);
 
   await run(`
     CREATE TABLE IF NOT EXISTS vehicle_brands (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      nom TEXT UNIQUE NOT NULL,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      tenant_id INTEGER,
+      nom TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(tenant_id, nom),
+      FOREIGN KEY(tenant_id) REFERENCES tenants(id)
     )
   `);
 
   await run(`
     CREATE TABLE IF NOT EXISTS garages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      nom TEXT UNIQUE NOT NULL,
+      tenant_id INTEGER,
+      nom TEXT NOT NULL,
       adresse TEXT,
       contact TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(tenant_id, nom),
+      FOREIGN KEY(tenant_id) REFERENCES tenants(id)
     )
   `);
 
   await run(`
     CREATE TABLE IF NOT EXISTS missions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER,
       mission_code TEXT,
       assureur_nom TEXT NOT NULL,
       assureur_contact TEXT,
@@ -138,6 +192,7 @@ const initializeDatabase = async () => {
       created_by INTEGER,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(tenant_id) REFERENCES tenants(id),
       FOREIGN KEY(agent_id) REFERENCES users(id),
       FOREIGN KEY(created_by) REFERENCES users(id),
       FOREIGN KEY(assureur_id) REFERENCES insurers(id),
@@ -163,11 +218,13 @@ const initializeDatabase = async () => {
   await run(`
     CREATE TABLE IF NOT EXISTS insurer_agencies (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER,
       insurer_id INTEGER NOT NULL,
       nom TEXT NOT NULL,
       adresse TEXT,
       telephone TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(tenant_id) REFERENCES tenants(id),
       FOREIGN KEY(insurer_id) REFERENCES insurers(id) ON DELETE CASCADE
     )
   `);
@@ -227,6 +284,170 @@ const initializeDatabase = async () => {
     await run('CREATE INDEX IF NOT EXISTS idx_mission_damages_mission ON mission_damages(mission_id)');
   } catch (error) {
     // ignore
+  }
+
+  const addTenantSettingsColumn = async (columnName, columnType = 'TEXT') => {
+    try {
+      await run(`ALTER TABLE tenant_settings ADD COLUMN ${columnName} ${columnType}`);
+    } catch (error) {
+      if (!String(error.message).includes('duplicate column name')) {
+        throw error;
+      }
+    }
+  };
+
+  await addTenantSettingsColumn('ice');
+  await addTenantSettingsColumn('identifiant_fiscal');
+  await addTenantSettingsColumn('registre_commerce');
+  await addTenantSettingsColumn('cnss');
+  await addTenantSettingsColumn('expert_nom');
+  await addTenantSettingsColumn('ville_defaut');
+  await addTenantSettingsColumn('mission_reference_prefix');
+  await addTenantSettingsColumn('rapport_couleur_primaire');
+  await addTenantSettingsColumn('rapport_couleur_secondaire');
+  await addTenantSettingsColumn('mentions_legales');
+
+  await run(
+    `INSERT OR IGNORE INTO tenants (slug, nom)
+     VALUES (?, ?)`,
+    [DEFAULT_TENANT_SLUG, DEFAULT_TENANT_NAME]
+  );
+  const defaultTenant = await get('SELECT id FROM tenants WHERE slug = ?', [DEFAULT_TENANT_SLUG]);
+  const defaultTenantId = defaultTenant?.id;
+
+  const addTenantColumn = async (tableName) => {
+    try {
+      await run(`ALTER TABLE ${tableName} ADD COLUMN tenant_id INTEGER`);
+    } catch (error) {
+      if (!String(error.message).includes('duplicate column name')) {
+        throw error;
+      }
+    }
+  };
+
+  await addTenantColumn('users');
+  await addTenantColumn('insurers');
+  await addTenantColumn('vehicle_brands');
+  await addTenantColumn('garages');
+  await addTenantColumn('missions');
+  await addTenantColumn('insurer_agencies');
+
+  if (defaultTenantId) {
+    await run("UPDATE users SET tenant_id = ? WHERE tenant_id IS NULL AND role != 'SUPER_ADMIN'", [defaultTenantId]);
+    await run('UPDATE insurers SET tenant_id = ? WHERE tenant_id IS NULL', [defaultTenantId]);
+    await run('UPDATE vehicle_brands SET tenant_id = ? WHERE tenant_id IS NULL', [defaultTenantId]);
+    await run('UPDATE garages SET tenant_id = ? WHERE tenant_id IS NULL', [defaultTenantId]);
+    await run('UPDATE missions SET tenant_id = ? WHERE tenant_id IS NULL', [defaultTenantId]);
+    await run('UPDATE insurer_agencies SET tenant_id = ? WHERE tenant_id IS NULL', [defaultTenantId]);
+    await run(
+      `INSERT OR IGNORE INTO tenant_settings (tenant_id, cabinet_nom)
+       VALUES (?, ?)`,
+      [defaultTenantId, DEFAULT_TENANT_NAME]
+    );
+  }
+
+  const usersTable = await get("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'");
+  if (usersTable?.sql && !usersTable.sql.includes("'SUPER_ADMIN'")) {
+    await run('BEGIN TRANSACTION');
+    try {
+      await run(`
+        CREATE TABLE users_with_roles (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          tenant_id INTEGER,
+          login TEXT UNIQUE NOT NULL,
+          password_hash TEXT NOT NULL,
+          role TEXT NOT NULL CHECK (role IN ('SUPER_ADMIN', 'ADMIN_CABINET', 'GESTIONNAIRE', 'AGENT')),
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(tenant_id) REFERENCES tenants(id)
+        )
+      `);
+      await run(`
+        INSERT INTO users_with_roles (id, tenant_id, login, password_hash, role, created_at)
+        SELECT id, tenant_id, login, password_hash, role, created_at
+        FROM users
+      `);
+      await run('DROP TABLE users');
+      await run('ALTER TABLE users_with_roles RENAME TO users');
+      await run('COMMIT');
+    } catch (error) {
+      await run('ROLLBACK');
+      throw error;
+    }
+  }
+
+  const rebuildTenantReferenceTable = async ({ tableName, columnsSql, selectColumns }) => {
+    const table = await get("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", [tableName]);
+    if (!table?.sql || table.sql.includes('UNIQUE(tenant_id, nom)')) {
+      return;
+    }
+
+    const tempTableName = `${tableName}_tenant_unique`;
+    await run('BEGIN TRANSACTION');
+    try {
+      await run(`
+        CREATE TABLE ${tempTableName} (
+          ${columnsSql},
+          UNIQUE(tenant_id, nom),
+          FOREIGN KEY(tenant_id) REFERENCES tenants(id)
+        )
+      `);
+      await run(`
+        INSERT OR IGNORE INTO ${tempTableName} (${selectColumns})
+        SELECT ${selectColumns}
+        FROM ${tableName}
+      `);
+      await run(`DROP TABLE ${tableName}`);
+      await run(`ALTER TABLE ${tempTableName} RENAME TO ${tableName}`);
+      await run('COMMIT');
+    } catch (error) {
+      await run('ROLLBACK');
+      throw error;
+    }
+  };
+
+  await rebuildTenantReferenceTable({
+    tableName: 'insurers',
+    columnsSql: `
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          tenant_id INTEGER,
+          nom TEXT NOT NULL,
+          contact TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    `,
+    selectColumns: 'id, tenant_id, nom, contact, created_at',
+  });
+  await rebuildTenantReferenceTable({
+    tableName: 'vehicle_brands',
+    columnsSql: `
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          tenant_id INTEGER,
+          nom TEXT NOT NULL,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    `,
+    selectColumns: 'id, tenant_id, nom, created_at',
+  });
+  await rebuildTenantReferenceTable({
+    tableName: 'garages',
+    columnsSql: `
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          tenant_id INTEGER,
+          nom TEXT NOT NULL,
+          adresse TEXT,
+          contact TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    `,
+    selectColumns: 'id, tenant_id, nom, adresse, contact, created_at',
+  });
+
+  try {
+    await run('CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id)');
+    await run('CREATE INDEX IF NOT EXISTS idx_missions_tenant ON missions(tenant_id)');
+    await run('CREATE INDEX IF NOT EXISTS idx_insurers_tenant ON insurers(tenant_id)');
+    await run('CREATE INDEX IF NOT EXISTS idx_brands_tenant ON vehicle_brands(tenant_id)');
+    await run('CREATE INDEX IF NOT EXISTS idx_garages_tenant ON garages(tenant_id)');
+    await run('CREATE INDEX IF NOT EXISTS idx_agencies_tenant ON insurer_agencies(tenant_id)');
+  } catch (error) {
+    // ignore index errors
   }
 
   try {

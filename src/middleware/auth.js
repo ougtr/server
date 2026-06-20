@@ -11,6 +11,7 @@ const authenticate = (req, res, next) => {
   try {
     const payload = jwt.verify(token, JWT_SECRET);
     req.user = payload;
+    req.tenantId = payload.tenantId || null;
     next();
   } catch (error) {
     res.status(401).json({ message: 'Token invalide' });
@@ -23,7 +24,7 @@ const authorizeRoles = (...allowedRoles) => (req, res, next) => {
   }
 
   if (!allowedRoles.includes(req.user.role)) {
-    return res.status(403).json({ message: 'Accès refusé' });
+    return res.status(403).json({ message: 'Acces refuse' });
   }
 
   next();

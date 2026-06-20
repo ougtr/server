@@ -1,6 +1,7 @@
 const PDFDocument = require('pdfkit');
 const path = require('path');
 const fs = require('fs');
+const { UPLOAD_DIR } = require('../config');
 
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
@@ -16,6 +17,21 @@ const valueOrDefault = (value, fallback = '') => (value === undefined || value =
 const hasOwn = (object, key) => Boolean(object) && Object.prototype.hasOwnProperty.call(object, key);
 const normalizeReportTitleMode = (value) =>
   REPORT_TITLE_MODES.includes(value) ? value : REPORT_TITLE_MODES[0];
+const settingValue = (settings, key, fallback = '') => {
+  const value = settings?.[key];
+  return value === null || value === undefined || value === '' ? fallback : String(value);
+};
+const resolveUploadedAsset = (relativePath) => {
+  if (!relativePath) {
+    return null;
+  }
+  const absolutePath = path.resolve(UPLOAD_DIR, relativePath);
+  const uploadRoot = path.resolve(UPLOAD_DIR);
+  if (!absolutePath.startsWith(uploadRoot) || !fs.existsSync(absolutePath)) {
+    return null;
+  }
+  return absolutePath;
+};
 
 const normalizeNumber = (value) => {
   if (value === null || value === undefined || value === '') {
@@ -130,11 +146,15 @@ const drawTable = (doc, x, y, widths, heights) => {
   });
 };
 
-const resolveStampImage = () => {
+const resolveStampImage = (settings = {}) => {
+  const customStamp = resolveUploadedAsset(settings.cachetPath);
+  if (customStamp) {
+    return customStamp;
+  }
   const projectRoot = path.resolve(__dirname, '..', '..', '..');
   const candidates = [
-    path.join(projectRoot, 'server', 'cachet-opale.png'),
-    path.join(__dirname, '..', '..', 'cachet-opale.png'),
+    path.join(projectRoot, 'server', 'default-logo.png'),
+    path.join(__dirname, '..', '..', 'default-logo.png'),
   ];
   return candidates.find((imagePath) => fs.existsSync(imagePath)) || null;
 };
@@ -160,8 +180,8 @@ const readPngDimensions = (imagePath) => {
   }
 };
 
-const drawStamp = (doc, x, y, width = 115) => {
-  const stampPath = resolveStampImage();
+const drawStamp = (doc, x, y, width = 115, settings = {}) => {
+  const stampPath = resolveStampImage(settings);
   if (!stampPath) {
     return;
   }
@@ -178,7 +198,7 @@ const drawStamp = (doc, x, y, width = 115) => {
   }
 };
 
-const buildDefaultPayload = (mission = {}, payload = {}) => {
+const buildDefaultPayload = (mission = {}, payload = {}, settings = {}) => {
   const firstExpert = payload.firstExpert || {};
   const secondExpert = payload.secondExpert || {};
   const vehicle = payload.vehicle || {};
@@ -209,7 +229,7 @@ const buildDefaultPayload = (mission = {}, payload = {}) => {
     secondExpertVehicleRegistration: safe(payload.secondExpertVehicleRegistration || mission.sinistreImmatriculationAdverse),
     secondExpertPolicyNumber: safe(payload.secondExpertPolicyNumber || mission.sinistrePoliceAdverse),
     damagedPartyLabel: safe(payload.damagedPartyLabel || mission.assureNom),
-    city: safe(payload.city || 'Casa'),
+    city: safe(payload.city || settingValue(settings, 'villeDefaut', 'Casa')),
     reportDate: formatDate(payload.reportDate || new Date().toISOString()),
     observations: safe(payload.observations),
     vehicle: {
@@ -242,7 +262,9 @@ const buildDefaultPayload = (mission = {}, payload = {}) => {
       valeurEpave: valueOrDefault(firstExpert.valeurEpave, hasValue(mission.valeurEpaves) ? formatAmount(mission.valeurEpaves) : ''),
       valueDifference: valueOrDefault(firstExpert.valueDifference, defaultValueDifference),
       companyLabel: hasOwn(firstExpert, 'companyLabel') ? safe(firstExpert.companyLabel) : safe(mission.assureurNom),
-      cabinetLabel: hasOwn(firstExpert, 'cabinetLabel') ? safe(firstExpert.cabinetLabel) : 'OPALE EXPERTISE',
+      cabinetLabel: hasOwn(firstExpert, 'cabinetLabel')
+        ? safe(firstExpert.cabinetLabel)
+        : settingValue(settings, 'cabinetNom', 'Expert auto'),
     },
     secondExpert: {
       repairSelected: normalizeBoolean(secondExpert.repairSelected, false),
@@ -297,7 +319,7 @@ const drawIntro = (doc, data) => {
   doc.font('Helvetica-Bold').fontSize(10).text('Entre les soussignés :', LEFT, 192, { width: 250 });
 
   doc.font('Helvetica-Bold').fontSize(10.5);
-  doc.text('OPALE EXPERTISE,', LEFT, 222, { lineBreak: false });
+  doc.text(`${safe(data.firstExpert.cabinetLabel)},`, LEFT, 222, { lineBreak: false });
   doc.font('Helvetica').text(` désigné par la compagnie ${safe(data.firstExpertInsurer)}`, 186, 222, {
     lineBreak: false,
   });
@@ -451,12 +473,12 @@ const drawObservationLines = (doc, x, y, width, rows) => {
   }
 };
 
-const createMissionPreliminaryContradictoireReport = (mission, payload = {}) => {
+const createMissionPreliminaryContradictoireReport = (mission, payload = {}, settings = {}) => {
   const doc = new PDFDocument({
     size: 'A4',
     margin: 0,
   });
-  const data = buildDefaultPayload(mission, payload);
+  const data = buildDefaultPayload(mission, payload, settings);
 
   drawHeader(doc, data.reportTitleMode);
   drawInfoPanel(doc, data);
@@ -489,7 +511,7 @@ const createMissionPreliminaryContradictoireReport = (mission, payload = {}) => 
     true
   );
   doc.font('Helvetica').fontSize(9.4).text('Page 19', 0, 764, { width: PAGE_WIDTH, align: 'center' });
-  drawStamp(doc, 334, 756, 205);
+  drawStamp(doc, 334, 756, 205, settings);
 
   doc.addPage();
 
@@ -564,7 +586,7 @@ const createMissionPreliminaryContradictoireReport = (mission, payload = {}) => 
     });
   }
 
-  drawStamp(doc, 36, 752, 215);
+  drawStamp(doc, 36, 752, 215, settings);
   doc.font('Helvetica').fontSize(9.4).text('Page 20', 0, 764, { width: PAGE_WIDTH, align: 'center' });
 
   return doc;

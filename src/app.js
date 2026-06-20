@@ -5,6 +5,8 @@ const { UPLOAD_DIR } = require('./config');
 
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
+const tenantRoutes = require('./routes/tenants');
+const tenantSettingsRoutes = require('./routes/tenantSettings');
 const missionRoutes = require('./routes/missions');
 const insurerRoutes = require('./routes/insurers');
 const insurerAgencyRoutes = require('./routes/insurerAgencies');
@@ -19,6 +21,8 @@ app.use(morgan('dev'));
 app.use('/uploads', express.static(UPLOAD_DIR));
 
 app.use('/api/auth', authRoutes);
+app.use('/api/tenants', tenantRoutes);
+app.use('/api/tenant-settings', tenantSettingsRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/missions', missionRoutes);
 app.use('/api/insurers', insurerRoutes);
@@ -42,4 +46,3 @@ app.get('*', (req, res) => {
 });
 
 module.exports = app;
-

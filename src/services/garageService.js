@@ -1,35 +1,54 @@
 const { run, get, all } = require('../db');
 
-const listGarages = () =>
-  all(
-    `SELECT id, nom, adresse, contact, created_at AS createdAt
-     FROM garages
-     ORDER BY nom ASC`
-  );
+const requireTenant = (tenantId) => {
+  if (!tenantId) {
+    throw new Error('Cabinet requis');
+  }
+};
 
-const getGarageById = (id) =>
-  get(
-    `SELECT id, nom, adresse, contact, created_at AS createdAt
+const listGarages = (tenantId) => {
+  requireTenant(tenantId);
+  return all(
+    `SELECT id, tenant_id AS tenantId, nom, adresse, contact, created_at AS createdAt
      FROM garages
-     WHERE id = ?`,
-    [id]
+     WHERE tenant_id = ?
+     ORDER BY nom ASC`,
+    [tenantId]
   );
+};
 
-const createGarage = async ({ nom, adresse, contact }) => {
+const getGarageById = (id, tenantId) => {
+  const conditions = ['id = ?'];
+  const params = [id];
+  if (tenantId) {
+    conditions.push('tenant_id = ?');
+    params.push(tenantId);
+  }
+  return get(
+    `SELECT id, tenant_id AS tenantId, nom, adresse, contact, created_at AS createdAt
+     FROM garages
+     WHERE ${conditions.join(' AND ')}`,
+    params
+  );
+};
+
+const createGarage = async ({ nom, adresse, contact }, tenantId) => {
+  requireTenant(tenantId);
   const trimmedName = (nom || '').trim();
   if (!trimmedName) {
     throw new Error('Le nom du garage est requis');
   }
 
   const result = await run(
-    'INSERT INTO garages (nom, adresse, contact) VALUES (?, ?, ?)',
-    [trimmedName, adresse ? adresse.trim() : null, contact ? contact.trim() : null]
+    'INSERT INTO garages (tenant_id, nom, adresse, contact) VALUES (?, ?, ?, ?)',
+    [tenantId, trimmedName, adresse ? adresse.trim() : null, contact ? contact.trim() : null]
   );
 
-  return getGarageById(result.id);
+  return getGarageById(result.id, tenantId);
 };
 
-const updateGarage = async (id, { nom, adresse, contact }) => {
+const updateGarage = async (id, { nom, adresse, contact }, tenantId) => {
+  requireTenant(tenantId);
   const updates = [];
   const params = [];
 
@@ -53,20 +72,21 @@ const updateGarage = async (id, { nom, adresse, contact }) => {
   }
 
   if (!updates.length) {
-    return getGarageById(id);
+    return getGarageById(id, tenantId);
   }
 
-  params.push(id);
-  await run(`UPDATE garages SET ${updates.join(', ')} WHERE id = ?`, params);
-  return getGarageById(id);
+  params.push(id, tenantId);
+  await run(`UPDATE garages SET ${updates.join(', ')} WHERE id = ? AND tenant_id = ?`, params);
+  return getGarageById(id, tenantId);
 };
 
-const deleteGarage = async (id) => {
-  const usage = await get('SELECT COUNT(1) AS total FROM missions WHERE garage_id = ?', [id]);
+const deleteGarage = async (id, tenantId) => {
+  requireTenant(tenantId);
+  const usage = await get('SELECT COUNT(1) AS total FROM missions WHERE garage_id = ? AND tenant_id = ?', [id, tenantId]);
   if (usage && usage.total > 0) {
     throw new Error('Impossible de supprimer un garage rattache a des missions');
   }
-  await run('DELETE FROM garages WHERE id = ?', [id]);
+  await run('DELETE FROM garages WHERE id = ? AND tenant_id = ?', [id, tenantId]);
 };
 
 module.exports = {

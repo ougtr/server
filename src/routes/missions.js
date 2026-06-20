@@ -20,7 +20,7 @@ const {
 } = require('../services/damageService');
 const { listLaborsByMission, saveLabors } = require('../services/laborService');
 const { optimizeUploadedPhoto } = require('../services/imageOptimizationService');
-const { ROLES, MISSION_STATUSES, PHOTO_PHASES, PHOTO_LABELS } = require('../constants');
+const { ROLES, MISSION_STATUSES, TENANT_ADMIN_ROLES, PHOTO_PHASES, PHOTO_LABELS } = require('../constants');
 const { UPLOAD_DIR } = require('../config');
 const { createMissionReport } = require('../services/reportService');
 const { createMissionHonorairesReport } = require('../services/honorairesReportService');
@@ -29,6 +29,7 @@ const {
 } = require('../services/preliminaryContradictoireReportService');
 const { createMissionDamageNoticeReport } = require('../services/damageNoticeReportService');
 const { createMissionsExport } = require('../services/missionExportService');
+const { getTenantSettings } = require('../services/tenantService');
 
 const router = express.Router();
 
@@ -133,7 +134,7 @@ router.use(authenticate);
 
 const loadMissionForUser = async (req, res, next) => {
   try {
-    const mission = await missionService.getMissionById(req.params.id);
+    const mission = await missionService.getMissionById(req.params.id, req.tenantId);
     if (!mission) {
       return res.status(404).json({ message: 'Mission introuvable' });
     }
@@ -150,7 +151,7 @@ const loadMissionForUser = async (req, res, next) => {
 };
 
 const canEditMission = (req) => {
-  if (req.user.role === ROLES.GESTIONNAIRE) {
+  if (TENANT_ADMIN_ROLES.includes(req.user.role)) {
     return true;
   }
   if (req.user.role === ROLES.AGENT && req.mission && req.mission.agentId === req.user.id) {
@@ -175,6 +176,7 @@ router.get('/', async (req, res) => {
     const result = await missionService.listMissions({
       role: req.user.role,
       userId: req.user.id,
+      tenantId: req.tenantId,
       filters: {
         statut,
         agentId,
@@ -200,6 +202,7 @@ router.get('/export', async (req, res) => {
     const missions = await missionService.listMissionsForExport({
       role: req.user.role,
       userId: req.user.id,
+      tenantId: req.tenantId,
     });
     const workbookBuffer = await createMissionsExport(missions);
     const date = new Date().toISOString().slice(0, 10);
@@ -223,7 +226,8 @@ router.get('/:id/report', loadMissionForUser, async (req, res) => {
       listDamagesByMission(req.params.id),
       listLaborsByMission(req.params.id),
     ]);
-    const doc = createMissionReport(req.mission, damages, labors);
+    const settings = await getTenantSettings(req.tenantId);
+    const doc = createMissionReport(req.mission, damages, labors, settings);
     const filename = `rapport-mission-${req.mission.id}.pdf`;
     await sendPdfWithoutArchive(res, {
       filename,
@@ -237,11 +241,12 @@ router.get('/:id/report', loadMissionForUser, async (req, res) => {
 
 router.get('/:id/honoraires-report', loadMissionForUser, async (req, res) => {
   try {
+    const settings = await getTenantSettings(req.tenantId);
     const doc = createMissionHonorairesReport(req.mission, {
       honoraires: req.query.honoraires,
       photos: req.query.photos,
       deplacement: req.query.deplacement,
-    });
+    }, settings);
     const filename = `note-honoraires-mission-${req.mission.id}.pdf`;
     await sendPdfWithoutArchive(res, {
       filename,
@@ -255,7 +260,8 @@ router.get('/:id/honoraires-report', loadMissionForUser, async (req, res) => {
 
 router.post('/:id/preliminary-contradictoire-report', loadMissionForUser, async (req, res) => {
   try {
-    const doc = createMissionPreliminaryContradictoireReport(req.mission, req.body || {});
+    const settings = await getTenantSettings(req.tenantId);
+    const doc = createMissionPreliminaryContradictoireReport(req.mission, req.body || {}, settings);
     const filename = `rapport-preliminaire-contradictoire-mission-${req.mission.id}.pdf`;
     await sendPdfWithoutArchive(res, {
       filename,
@@ -269,7 +275,8 @@ router.post('/:id/preliminary-contradictoire-report', loadMissionForUser, async 
 
 router.post('/:id/damage-notice-report', loadMissionForUser, async (req, res) => {
   try {
-    const doc = createMissionDamageNoticeReport(req.mission, req.body || {});
+    const settings = await getTenantSettings(req.tenantId);
+    const doc = createMissionDamageNoticeReport(req.mission, req.body || {}, settings);
     const filename = `avis-dommages-mission-${req.mission.id}.pdf`;
     await sendPdfWithoutArchive(res, {
       filename,
@@ -304,23 +311,23 @@ router.get('/:id', loadMissionForUser, async (req, res) => {
   }
 });
 
-router.post('/', authorizeRoles(ROLES.GESTIONNAIRE), async (req, res) => {
+router.post('/', authorizeRoles(...TENANT_ADMIN_ROLES), async (req, res) => {
   try {
-    const mission = await missionService.createMission(req.body, req.user.id);
+    const mission = await missionService.createMission(req.body, req.user.id, req.tenantId);
     res.status(201).json(mission);
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
 });
 
-router.put('/:id', authorizeRoles(ROLES.GESTIONNAIRE), async (req, res) => {
+router.put('/:id', authorizeRoles(...TENANT_ADMIN_ROLES), async (req, res) => {
   try {
-    const existing = await missionService.getMissionById(req.params.id);
+    const existing = await missionService.getMissionById(req.params.id, req.tenantId);
     if (!existing) {
       return res.status(404).json({ message: 'Mission introuvable' });
     }
 
-    const mission = await missionService.updateMission(req.params.id, req.body || {});
+    const mission = await missionService.updateMission(req.params.id, req.body || {}, req.tenantId);
     res.json(mission);
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -337,12 +344,12 @@ router.patch('/:id/status', loadMissionForUser, async (req, res) => {
     return res.status(400).json({ message: 'Statut invalide' });
   }
 
-  if (statut === 'terminee' && req.user.role !== ROLES.GESTIONNAIRE) {
+  if (statut === 'terminee' && !TENANT_ADMIN_ROLES.includes(req.user.role)) {
     return res.status(403).json({ message: 'Seul le gestionnaire peut cloturer la mission' });
   }
 
   try {
-    const updated = await missionService.updateMissionStatus(req.params.id, statut);
+    const updated = await missionService.updateMissionStatus(req.params.id, statut, req.tenantId);
     res.json(updated);
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -355,21 +362,21 @@ router.patch('/:id/reglement', loadMissionForUser, async (req, res) => {
   }
 
   try {
-    const updated = await missionService.updateMissionRegle(req.params.id, req.body.regle);
+    const updated = await missionService.updateMissionRegle(req.params.id, req.body.regle, req.tenantId);
     res.json(updated);
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
 });
 
-router.delete('/:id', authorizeRoles(ROLES.GESTIONNAIRE), async (req, res) => {
+router.delete('/:id', authorizeRoles(...TENANT_ADMIN_ROLES), async (req, res) => {
   try {
-    const existing = await missionService.getMissionById(req.params.id);
+    const existing = await missionService.getMissionById(req.params.id, req.tenantId);
     if (!existing) {
       return res.status(404).json({ message: 'Mission introuvable' });
     }
 
-    await missionService.deleteMission(req.params.id);
+    await missionService.deleteMission(req.params.id, req.tenantId);
 
     try {
       const missionDir = path.join(UPLOAD_DIR, req.params.id);
@@ -429,9 +436,9 @@ router.post(
         mission.statut !== 'terminee' &&
         mission.statut !== 'en_cours'
       ) {
-        mission = await missionService.updateMissionStatus(req.params.id, 'en_cours');
+        mission = await missionService.updateMissionStatus(req.params.id, 'en_cours', req.tenantId);
       } else {
-        mission = await missionService.getMissionById(req.params.id);
+        mission = await missionService.getMissionById(req.params.id, req.tenantId);
       }
 
       const documents = await listDocumentsByMission(req.params.id);
@@ -462,7 +469,7 @@ router.delete('/:id/documents/:documentId', loadMissionForUser, async (req, res)
     await deleteDocument(document.id);
     const [documents, mission] = await Promise.all([
       listDocumentsByMission(req.params.id),
-      missionService.getMissionById(req.params.id),
+      missionService.getMissionById(req.params.id, req.tenantId),
     ]);
     res.json({ documents, mission });
   } catch (error) {
@@ -520,9 +527,9 @@ router.post(
         mission.statut !== 'terminee' &&
         mission.statut !== 'en_cours'
       ) {
-        mission = await missionService.updateMissionStatus(req.params.id, 'en_cours');
+        mission = await missionService.updateMissionStatus(req.params.id, 'en_cours', req.tenantId);
       } else {
-        mission = await missionService.getMissionById(req.params.id);
+        mission = await missionService.getMissionById(req.params.id, req.tenantId);
       }
 
       const photos = await listPhotosByMission(req.params.id);
@@ -555,7 +562,7 @@ router.delete('/:id/photos/:photoId', loadMissionForUser, async (req, res) => {
 
     await deletePhoto(photo.id);
     const photos = await listPhotosByMission(req.params.id);
-    const mission = await missionService.getMissionById(req.params.id);
+    const mission = await missionService.getMissionById(req.params.id, req.tenantId);
     res.json({ photos, mission });
   } catch (error) {
     res.status(500).json({ message: 'Erreur lors de la suppression de la photo' });

@@ -1,6 +1,7 @@
 const PDFDocument = require('pdfkit');
 const path = require('path');
 const fs = require('fs');
+const { UPLOAD_DIR } = require('../config');
 
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
@@ -14,6 +15,23 @@ const INFO_LABEL_X = 70;
 const INFO_COLON_X = 168;
 const INFO_VALUE_X = 181;
 const INFO_LABEL_WIDTH = 94;
+
+const settingValue = (settings, key, fallback = '') => {
+  const value = settings?.[key];
+  return value === null || value === undefined || value === '' ? fallback : String(value);
+};
+
+const resolveUploadedAsset = (relativePath) => {
+  if (!relativePath) {
+    return null;
+  }
+  const absolutePath = path.resolve(UPLOAD_DIR, relativePath);
+  const uploadRoot = path.resolve(UPLOAD_DIR);
+  if (!absolutePath.startsWith(uploadRoot) || !fs.existsSync(absolutePath)) {
+    return null;
+  }
+  return absolutePath;
+};
 
 const normalizeAmount = (value) => {
   if (value === null || value === undefined || value === '') {
@@ -183,30 +201,33 @@ const numberToFrench = (value) => {
 
 const totalToWords = (value) => numberToFrench(Math.round(Number(value) || 0)).toUpperCase();
 
-const resolveLogo = () => {
+const resolveLogo = (settings = {}) => {
+  const customLogo = resolveUploadedAsset(settings.logoPath);
+  if (customLogo) {
+    return customLogo;
+  }
   const projectRoot = path.resolve(__dirname, '..', '..', '..');
   const candidates = [
-    path.join(projectRoot, 'client', 'public', 'opale.jpg'),
-    path.join(__dirname, '..', '..', 'public', 'opale.jpg'),
-    path.join(__dirname, '..', 'public', 'opale.jpg'),
+    path.join(projectRoot, 'client', 'public', 'default-logo.png'),
+    path.join(projectRoot, 'server', 'default-logo.png'),
+    path.join(__dirname, '..', '..', 'default-logo.png'),
   ];
   return candidates.find((logoPath) => fs.existsSync(logoPath)) || null;
 };
 
-const resolveFooterImage = () => {
-  const projectRoot = path.resolve(__dirname, '..', '..', '..');
-  const candidates = [
-    path.join(projectRoot, 'server', 'opale-en-pied.png'),
-    path.join(__dirname, '..', '..', 'opale-en-pied.png'),
-  ];
-  return candidates.find((imagePath) => fs.existsSync(imagePath)) || null;
+const resolveFooterImage = (settings = {}) => {
+  return null;
 };
 
-const resolveStampImage = () => {
+const resolveStampImage = (settings = {}) => {
+  const customStamp = resolveUploadedAsset(settings.cachetPath);
+  if (customStamp) {
+    return customStamp;
+  }
   const projectRoot = path.resolve(__dirname, '..', '..', '..');
   const candidates = [
-    path.join(projectRoot, 'server', 'cachet-opale.png'),
-    path.join(__dirname, '..', '..', 'cachet-opale.png'),
+    path.join(projectRoot, 'server', 'default-logo.png'),
+    path.join(__dirname, '..', '..', 'default-logo.png'),
   ];
   return candidates.find((imagePath) => fs.existsSync(imagePath)) || null;
 };
@@ -232,8 +253,20 @@ const readPngDimensions = (imagePath) => {
   }
 };
 
-const drawStamp = (doc) => {
-  const stampPath = resolveStampImage();
+const getContainedImageSize = (imagePath, maxWidth, maxHeight) => {
+  const dimensions = readPngDimensions(imagePath);
+  if (!dimensions?.width || !dimensions?.height) {
+    return { width: maxWidth, height: maxHeight };
+  }
+  const ratio = Math.min(maxWidth / dimensions.width, maxHeight / dimensions.height);
+  return {
+    width: Math.max(1, dimensions.width * ratio),
+    height: Math.max(1, dimensions.height * ratio),
+  };
+};
+
+const drawStamp = (doc, settings = {}) => {
+  const stampPath = resolveStampImage(settings);
   if (stampPath) {
     const stampSize = readPngDimensions(stampPath);
     const stampWidth = ((stampSize?.width || 334) * 72 * STAMP_SCALE) / PNG_DPI;
@@ -256,7 +289,7 @@ const drawStamp = (doc) => {
     .fontSize(11)
     .fillColor('#4f46e5')
     .opacity(0.7)
-    .text('OPALE EXPERTISE', 395, 676, {
+    .text('Expert auto', 395, 676, {
       width: 150,
       align: 'center',
     });
@@ -282,11 +315,11 @@ const drawFeeLine = (doc, y, label, value) => {
   });
 };
 
-const drawBankSection = (doc, startX, startY) => {
+const drawBankSection = (doc, startX, startY, settings = {}) => {
   const rows = [
-    ['Nom de La Banque', 'CIH Agence Casa El Oulfa'],
-    ['Nom du Titulaire du compte', 'OPALE EXPERTISE'],
-    ['Numero du compte', '230 780 6853479221002900 05'],
+    ['Nom de La Banque', settingValue(settings, 'banque', 'Banque a configurer')],
+    ['Nom du Titulaire du compte', settingValue(settings, 'cabinetNom', 'Expert auto')],
+    ['Numero du compte', settingValue(settings, 'rib', 'RIB a configurer')],
   ];
   const labelWidth = 136;
   const colonX = startX + labelWidth;
@@ -309,14 +342,14 @@ const drawBankSection = (doc, startX, startY) => {
   });
 };
 
-const createMissionHonorairesReport = (mission, amounts = {}) => {
+const createMissionHonorairesReport = (mission, amounts = {}, settings = {}) => {
   const doc = new PDFDocument({
     size: 'A4',
     margin: 0,
   });
 
-  const logoPath = resolveLogo();
-  const footerPath = resolveFooterImage();
+  const logoPath = resolveLogo(settings);
+  const footerPath = resolveFooterImage(settings);
   const issueDate = new Date();
   const vehicleLabel = [mission?.vehiculeMarque, mission?.vehiculeModele].filter(Boolean).join(' ') || '-';
 
@@ -327,11 +360,13 @@ const createMissionHonorairesReport = (mission, amounts = {}) => {
   const total = honoraires + taxe + photos + deplacement;
 
   if (logoPath) {
+    const logoSize = getContainedImageSize(logoPath, 260, 55);
     doc
       .rect(18, 48, 22, 48)
       .fill('#000000');
     doc.image(logoPath, 48, 48, {
-      width: 190,
+      width: logoSize.width,
+      height: logoSize.height,
     });
   }
 
@@ -339,13 +374,13 @@ const createMissionHonorairesReport = (mission, amounts = {}) => {
     .font('Helvetica')
     .fontSize(11)
     .fillColor('#333333')
-    .text(`CASABLANCA, le ${formatLongDate(issueDate)}`, 355, 152, {
+    .text(`${settingValue(settings, 'villeDefaut', 'CASABLANCA')}, le ${formatLongDate(issueDate)}`, 355, 152, {
       width: 185,
       align: 'left',
     });
 
   const infoRows = [
-    ['Reference Opale', safe(mission?.missionCode || `M-${mission?.id || '-'}`)],
+    ['Reference Expert auto', safe(mission?.missionCode || `M-${mission?.id || '-'}`)],
     [`Sinistre ${NUMERO_LABEL}`, safe(mission?.sinistreType)],
     ['Date du Sinistre', formatShortDate(mission?.sinistreDate)],
     ['Assure', safe(mission?.assureNom)],
@@ -425,7 +460,7 @@ const createMissionHonorairesReport = (mission, amounts = {}) => {
       lineBreak: false,
     });
 
-  drawBankSection(doc, 70, 668);
+  drawBankSection(doc, 70, 668, settings);
 
   doc
     .font('Helvetica')
@@ -436,7 +471,7 @@ const createMissionHonorairesReport = (mission, amounts = {}) => {
       width: 300,
     });
 
-  drawStamp(doc);
+  drawStamp(doc, settings);
 
   if (footerPath) {
     doc.image(footerPath, 0, PAGE_HEIGHT - FOOTER_HEIGHT, {

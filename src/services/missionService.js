@@ -99,59 +99,59 @@ const mapMission = (mission) => {
   };
 };
 
-const ensureValidAssignee = async (assigneeId) => {
+const ensureValidAssignee = async (assigneeId, tenantId) => {
   if (assigneeId === undefined) {
     return undefined;
   }
   if (assigneeId === null || assigneeId === '') {
     return null;
   }
-  const assignee = await getUserById(assigneeId);
+  const assignee = await getUserById(assigneeId, tenantId);
   if (!assignee) {
     throw new Error('Utilisateur cible introuvable');
   }
   if (!ASSIGNABLE_ROLES.includes(assignee.role)) {
-    throw new Error('Le compte cible doit avoir le role AGENT ou GESTIONNAIRE');
+    throw new Error('Le compte cible doit avoir un role assignable');
   }
   return Number(assignee.id);
 };
 
-const ensureValidInsurer = async (insurerId) => {
+const ensureValidInsurer = async (insurerId, tenantId) => {
   if (insurerId === undefined) {
     return undefined;
   }
   if (insurerId === null || insurerId === '') {
     return null;
   }
-  const insurer = await getInsurerById(insurerId);
+  const insurer = await getInsurerById(insurerId, tenantId);
   if (!insurer) {
     throw new Error('Assureur introuvable');
   }
   return insurer;
 };
 
-const ensureValidBrand = async (brandId) => {
+const ensureValidBrand = async (brandId, tenantId) => {
   if (brandId === undefined) {
     return undefined;
   }
   if (brandId === null || brandId === '') {
     return null;
   }
-  const brand = await getBrandById(brandId);
+  const brand = await getBrandById(brandId, tenantId);
   if (!brand) {
     throw new Error('Marque introuvable');
   }
   return brand;
 };
 
-const ensureValidGarage = async (garageId) => {
+const ensureValidGarage = async (garageId, tenantId) => {
   if (garageId === undefined) {
     return undefined;
   }
   if (garageId === null || garageId === '') {
     return null;
   }
-  const garage = await getGarageById(garageId);
+  const garage = await getGarageById(garageId, tenantId);
   if (!garage) {
     throw new Error('Garage introuvable');
   }
@@ -185,14 +185,14 @@ const normalizeCirculationDate = (value) => {
   return trimmed;
 };
 
-const ensureValidAgency = async (agencyId, insurerId) => {
+const ensureValidAgency = async (agencyId, insurerId, tenantId) => {
   if (agencyId === undefined) {
     return undefined;
   }
   if (agencyId === null || agencyId === '') {
     return null;
   }
-  const agency = await getAgencyById(agencyId);
+  const agency = await getAgencyById(agencyId, tenantId);
   if (!agency) {
     throw new Error("Agence d'assurance introuvable");
   }
@@ -208,11 +208,16 @@ const ensureValidAgency = async (agencyId, insurerId) => {
   };
 };
 
-const listMissions = async ({ role, userId, filters = {}, pagination = {} }) => {
+const listMissions = async ({ role, userId, tenantId, filters = {}, pagination = {} }) => {
   const conditions = [];
   const params = [];
 
   const keyword = typeof filters.keyword === 'string' ? filters.keyword.trim().toLowerCase() : '';
+
+  if (tenantId) {
+    conditions.push('missions.tenant_id = ?');
+    params.push(tenantId);
+  }
 
   if (role === 'AGENT') {
     conditions.push('missions.agent_id = ?');
@@ -331,9 +336,14 @@ const listMissions = async ({ role, userId, filters = {}, pagination = {} }) => 
   };
 };
 
-const listMissionsForExport = async ({ role, userId }) => {
+const listMissionsForExport = async ({ role, userId, tenantId }) => {
   const conditions = [];
   const params = [];
+
+  if (tenantId) {
+    conditions.push('missions.tenant_id = ?');
+    params.push(tenantId);
+  }
 
   if (role === 'AGENT') {
     conditions.push('missions.agent_id = ?');
@@ -360,7 +370,13 @@ const listMissionsForExport = async ({ role, userId }) => {
   return rows.map(mapMission);
 };
 
-const getMissionById = async (id) => {
+const getMissionById = async (id, tenantId) => {
+  const conditions = ['missions.id = ?'];
+  const params = [id];
+  if (tenantId) {
+    conditions.push('missions.tenant_id = ?');
+    params.push(tenantId);
+  }
   const mission = await get(
     `SELECT missions.*, users.login AS agent_login, insurers.nom AS insurer_nom, insurers.contact AS insurer_contact,
             vehicle_brands.nom AS brand_nom,
@@ -372,13 +388,13 @@ const getMissionById = async (id) => {
      LEFT JOIN insurers ON insurers.id = missions.assureur_id
      LEFT JOIN vehicle_brands ON vehicle_brands.id = missions.vehicule_marque_id
      LEFT JOIN garages ON garages.id = missions.garage_id
-     WHERE missions.id = ?`,
-    [id]
+     WHERE ${conditions.join(' AND ')}`,
+    params
   );
   return mapMission(mission);
 };
 
-const createMission = async (payload, currentUserId) => {
+const createMission = async (payload, currentUserId, tenantId) => {
   const {
     assureurId,
     assureurAgenceId,
@@ -422,16 +438,20 @@ const createMission = async (payload, currentUserId) => {
     statut = 'cree',
   } = payload;
 
-  const insurer = await ensureValidInsurer(assureurId);
+  if (!tenantId) {
+    throw new Error('Cabinet requis');
+  }
+
+  const insurer = await ensureValidInsurer(assureurId, tenantId);
   if (!insurer) {
     throw new Error('Assureur requis');
   }
 
-  const agency = await ensureValidAgency(assureurAgenceId, insurer.id);
+  const agency = await ensureValidAgency(assureurAgenceId, insurer.id, tenantId);
 
-  const adverseInsurer = await ensureValidInsurer(assureurAdverseId);
+  const adverseInsurer = await ensureValidInsurer(assureurAdverseId, tenantId);
 
-  const brand = await ensureValidBrand(vehiculeMarqueId);
+  const brand = await ensureValidBrand(vehiculeMarqueId, tenantId);
   if (!brand) {
     throw new Error('Marque du vehicule requise');
   }
@@ -442,14 +462,14 @@ const createMission = async (payload, currentUserId) => {
 
   let garage = null;
   if (garageId !== undefined && garageId !== null && garageId !== '') {
-    garage = await ensureValidGarage(garageId);
+    garage = await ensureValidGarage(garageId, tenantId);
   }
 
   if (!MISSION_STATUSES.includes(statut)) {
     throw new Error('Statut invalide');
   }
 
-  const validAssigneeId = await ensureValidAssignee(agentId);
+  const validAssigneeId = await ensureValidAssignee(agentId, tenantId);
   const baseStatus = statut;
   const initialStatus = validAssigneeId !== null && validAssigneeId !== undefined ? 'affectee' : baseStatus;
 
@@ -566,6 +586,7 @@ const createMission = async (payload, currentUserId) => {
   const result = await run(
     `INSERT INTO missions (
       assureur_nom,
+      tenant_id,
       assureur_contact,
       assureur_agence_id,
       assureur_agence_nom,
@@ -622,10 +643,11 @@ const createMission = async (payload, currentUserId) => {
       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-      ?
+      ?, ?
     )`,
     [
       insurer.nom,
+      tenantId,
       insurer.contact || null,
       agency ? agency.id : null,
       agency ? agency.nom : null,
@@ -679,15 +701,18 @@ const createMission = async (payload, currentUserId) => {
     ]
   );
 
-  return getMissionById(result.id);
+  return getMissionById(result.id, tenantId);
 };
 
-const updateMissionStatus = async (id, newStatus) => {
+const updateMissionStatus = async (id, newStatus, tenantId) => {
   if (!MISSION_STATUSES.includes(newStatus)) {
     throw new Error('Statut invalide');
   }
 
-  const mission = await get('SELECT statut FROM missions WHERE id = ?', [id]);
+  const mission = await get(
+    `SELECT statut FROM missions WHERE id = ? ${tenantId ? 'AND tenant_id = ?' : ''}`,
+    tenantId ? [id, tenantId] : [id]
+  );
   if (!mission) {
     throw new Error('Mission introuvable');
   }
@@ -697,29 +722,29 @@ const updateMissionStatus = async (id, newStatus) => {
   }
 
   await run(
-    'UPDATE missions SET statut = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-    [newStatus, id]
+    `UPDATE missions SET statut = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? ${tenantId ? 'AND tenant_id = ?' : ''}`,
+    tenantId ? [newStatus, id, tenantId] : [newStatus, id]
   );
 
-  return getMissionById(id);
+  return getMissionById(id, tenantId);
 };
 
-const updateMissionRegle = async (id, regle) => {
-  const mission = await getMissionById(id);
+const updateMissionRegle = async (id, regle, tenantId) => {
+  const mission = await getMissionById(id, tenantId);
   if (!mission) {
     throw new Error('Mission introuvable');
   }
 
   await run(
-    'UPDATE missions SET regle = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-    [regle ? 1 : 0, id]
+    `UPDATE missions SET regle = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? ${tenantId ? 'AND tenant_id = ?' : ''}`,
+    tenantId ? [regle ? 1 : 0, id, tenantId] : [regle ? 1 : 0, id]
   );
 
-  return getMissionById(id);
+  return getMissionById(id, tenantId);
 };
 
-const updateMission = async (id, payload) => {
-  const current = await getMissionById(id);
+const updateMission = async (id, payload, tenantId) => {
+  const current = await getMissionById(id, tenantId);
   if (!current) {
     throw new Error('Mission introuvable');
   }
@@ -734,7 +759,7 @@ const updateMission = async (id, payload) => {
   let willAssign = false;
 
   if (Object.prototype.hasOwnProperty.call(payload, 'agentId')) {
-    assigneeIdValue = await ensureValidAssignee(payload.agentId);
+    assigneeIdValue = await ensureValidAssignee(payload.agentId, tenantId);
     const becameAssigned = assigneeIdValue !== null && assigneeIdValue !== undefined;
     const wasAssigned = current.agentId !== null && current.agentId !== undefined;
     if (becameAssigned && (!wasAssigned || assigneeIdValue !== current.agentId)) {
@@ -744,26 +769,26 @@ const updateMission = async (id, payload) => {
 
   let insurerInfo;
   if (Object.prototype.hasOwnProperty.call(payload, 'assureurId')) {
-    insurerInfo = await ensureValidInsurer(payload.assureurId);
+    insurerInfo = await ensureValidInsurer(payload.assureurId, tenantId);
   }
 
   const futureInsurerId = insurerInfo ? insurerInfo.id : current.assureurId;
 
   let agencyInfo;
   if (Object.prototype.hasOwnProperty.call(payload, 'assureurAgenceId')) {
-    agencyInfo = await ensureValidAgency(payload.assureurAgenceId, futureInsurerId);
+    agencyInfo = await ensureValidAgency(payload.assureurAgenceId, futureInsurerId, tenantId);
   } else if (insurerInfo !== undefined) {
     agencyInfo = null;
   }
 
   let brandInfo;
   if (Object.prototype.hasOwnProperty.call(payload, 'vehiculeMarqueId')) {
-    brandInfo = await ensureValidBrand(payload.vehiculeMarqueId);
+    brandInfo = await ensureValidBrand(payload.vehiculeMarqueId, tenantId);
   }
 
   let adverseInsurerInfo;
   if (Object.prototype.hasOwnProperty.call(payload, 'assureurAdverseId')) {
-    adverseInsurerInfo = await ensureValidInsurer(payload.assureurAdverseId);
+    adverseInsurerInfo = await ensureValidInsurer(payload.assureurAdverseId, tenantId);
   }
 
   let garageInfo;
@@ -771,7 +796,7 @@ const updateMission = async (id, payload) => {
     if (payload.garageId === null || payload.garageId === '') {
       garageInfo = null;
     } else {
-      garageInfo = await ensureValidGarage(payload.garageId);
+      garageInfo = await ensureValidGarage(payload.garageId, tenantId);
     }
   }
 
@@ -991,29 +1016,32 @@ const updateMission = async (id, payload) => {
   if (Object.prototype.hasOwnProperty.call(payload, 'statut')) pushUpdate('statut', payload.statut);
 
   if (!updates.length) {
-    return getMissionById(id);
+    return getMissionById(id, tenantId);
   }
 
   updates.push('updated_at = CURRENT_TIMESTAMP');
   params.push(id);
+  if (tenantId) {
+    params.push(tenantId);
+  }
 
-  await run(`UPDATE missions SET ${updates.join(', ')} WHERE id = ?`, params);
+  await run(`UPDATE missions SET ${updates.join(', ')} WHERE id = ? ${tenantId ? 'AND tenant_id = ?' : ''}`, params);
 
-  let updated = await getMissionById(id);
+  let updated = await getMissionById(id, tenantId);
 
   if (willAssign && statusOrder[updated.statut] < statusOrder.affectee) {
-    updated = await updateMissionStatus(id, 'affectee');
+    updated = await updateMissionStatus(id, 'affectee', tenantId);
   }
 
   return updated;
 };
 
-const deleteMission = async (id) => {
-  const mission = await getMissionById(id);
+const deleteMission = async (id, tenantId) => {
+  const mission = await getMissionById(id, tenantId);
   if (!mission) {
     throw new Error('Mission introuvable');
   }
-  await run('DELETE FROM missions WHERE id = ?', [id]);
+  await run(`DELETE FROM missions WHERE id = ? ${tenantId ? 'AND tenant_id = ?' : ''}`, tenantId ? [id, tenantId] : [id]);
 };
 
 module.exports = {
@@ -1026,13 +1054,6 @@ module.exports = {
   updateMissionRegle,
   deleteMission,
 };
-
-
-
-
-
-
-
 
 
 

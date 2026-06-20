@@ -1,5 +1,5 @@
 const readline = require('readline');
-const { initializeDatabase, run } = require('./db');
+const { initializeDatabase, run, get } = require('./db');
 const { createUser, getUserByLogin } = require('./services/userService');
 const { ROLES } = require('./constants');
 
@@ -72,9 +72,17 @@ const defaultVehicleBrands = [
   'Haval',
 ];
 
-const seedVehicleBrands = async () => {
+const getDefaultTenantId = async () => {
+  const tenant = await get("SELECT id FROM tenants WHERE slug = 'default'");
+  if (!tenant) {
+    throw new Error('Cabinet par defaut introuvable');
+  }
+  return tenant.id;
+};
+
+const seedVehicleBrands = async (tenantId) => {
   for (const brand of defaultVehicleBrands) {
-    await run('INSERT OR IGNORE INTO vehicle_brands (nom) VALUES (?)', [brand]);
+    await run('INSERT OR IGNORE INTO vehicle_brands (tenant_id, nom) VALUES (?, ?)', [tenantId, brand]);
   }
   console.log(`Marques inserees/verify : ${defaultVehicleBrands.length}`);
 };
@@ -106,17 +114,18 @@ const defaultInsurers = [
   'Taawounyiate Taamine Takafuli',
 ];
 
-const seedInsurers = async () => {
+const seedInsurers = async (tenantId) => {
   for (const insurer of defaultInsurers) {
-    await run('INSERT OR IGNORE INTO insurers (nom) VALUES (?)', [insurer]);
+    await run('INSERT OR IGNORE INTO insurers (tenant_id, nom) VALUES (?, ?)', [tenantId, insurer]);
   }
   console.log(`Assureurs verifies : ${defaultInsurers.length}`);
 };
 
 const seed = async () => {
   await initializeDatabase();
-  await seedInsurers();
-  await seedVehicleBrands();
+  const defaultTenantId = await getDefaultTenantId();
+  await seedInsurers(defaultTenantId);
+  await seedVehicleBrands(defaultTenantId);
   const existing = await getUserByLogin('admin');
   if (existing) {
     console.log('Un compte admin existe deja.');
@@ -125,7 +134,7 @@ const seed = async () => {
 
   const password = await askQuestion('Mot de passe pour le compte admin (defaut admin123): ');
   const finalPassword = password.trim() || 'admin123';
-  await createUser({ login: 'admin', password: finalPassword, role: ROLES.GESTIONNAIRE });
+  await createUser({ login: 'admin', password: finalPassword, role: ROLES.ADMIN_CABINET, tenantId: defaultTenantId });
   console.log('Compte admin cree (login: admin).');
 };
 

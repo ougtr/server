@@ -265,7 +265,7 @@ const createDocumentsWorksheet = (workbook) => {
 
 const createMissionsExport = async (missions) => {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'Gestion Mission - OPALE';
+  workbook.creator = 'Expert auto';
   workbook.created = new Date();
 
   const missionsSheet = createMissionsWorksheet(workbook);

@@ -5,11 +5,11 @@ const brandService = require('../services/vehicleBrandService');
 
 const router = express.Router();
 
-router.use(authenticate, authorizeRoles(ROLES.GESTIONNAIRE));
+router.use(authenticate, authorizeRoles(ROLES.ADMIN_CABINET, ROLES.GESTIONNAIRE));
 
 router.get('/', async (req, res) => {
   try {
-    const brands = await brandService.listBrands();
+    const brands = await brandService.listBrands(req.tenantId);
     res.json(brands);
   } catch (error) {
     res.status(500).json({ message: 'Impossible de recuperer les marques' });
@@ -18,7 +18,7 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const brand = await brandService.createBrand(req.body || {});
+    const brand = await brandService.createBrand(req.body || {}, req.tenantId);
     res.status(201).json(brand);
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -27,11 +27,11 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    const existing = await brandService.getBrandById(req.params.id);
+    const existing = await brandService.getBrandById(req.params.id, req.tenantId);
     if (!existing) {
       return res.status(404).json({ message: 'Marque introuvable' });
     }
-    const updated = await brandService.updateBrand(req.params.id, req.body || {});
+    const updated = await brandService.updateBrand(req.params.id, req.body || {}, req.tenantId);
     res.json(updated);
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -40,7 +40,7 @@ router.put('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
-    await brandService.deleteBrand(req.params.id);
+    await brandService.deleteBrand(req.params.id, req.tenantId);
     res.status(204).send();
   } catch (error) {
     const status = error.message.includes('Impossible de supprimer') ? 409 : 400;
