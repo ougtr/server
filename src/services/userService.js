@@ -43,6 +43,18 @@ const getUserById = (id, tenantId) => {
 
 const listUsers = (tenantId, requesterRole) => {
   if (requesterRole === ROLES.SUPER_ADMIN) {
+    if (tenantId) {
+      return all(
+        `SELECT users.id, users.tenant_id AS tenantId, users.login, users.role,
+                users.created_at AS createdAt, tenants.nom AS tenantNom
+         FROM users
+         LEFT JOIN tenants ON tenants.id = users.tenant_id
+         WHERE users.tenant_id = ?
+         ORDER BY users.login ASC`,
+        [tenantId]
+      );
+    }
+
     return all(`
       SELECT users.id, users.tenant_id AS tenantId, users.login, users.role,
              users.created_at AS createdAt, tenants.nom AS tenantNom

@@ -22,7 +22,8 @@ const resolveTargetTenantId = (req) => {
 
 router.get('/', async (req, res) => {
   try {
-    const users = await listUsers(req.tenantId, req.user.role);
+    const tenantId = req.user.role === ROLES.SUPER_ADMIN ? req.query.tenantId : req.tenantId;
+    const users = await listUsers(tenantId, req.user.role);
     res.json(users);
   } catch (error) {
     res.status(500).json({ message: 'Impossible de recuperer les utilisateurs' });
