@@ -352,17 +352,9 @@ const calculateFranchiseAmount = (mission, evaluationTotalTtc) => {
   return Math.max(percentValue, fixed);
 };
 
-const calculateIndemnisationFinale = (mission, netAfterVetusteTtc, franchiseBaseTtc) => {
+const calculateComputedIndemnisation = (mission, netAfterVetusteTtc, franchiseBaseTtc) => {
   const netBase = Math.max(0, netAfterVetusteTtc || 0);
-  const franchiseBase = Math.max(0, franchiseBaseTtc || 0);
-
-  // Keep manual user override when it exists.
-  if (mission && mission.indemnisationFinale !== undefined && mission.indemnisationFinale !== null) {
-    const stored = Number(mission.indemnisationFinale);
-    return Number.isNaN(stored) ? netBase : Math.max(0, stored);
-  }
-
-  const franchiseAmount = calculateFranchiseAmount(mission, franchiseBase);
+  const franchiseAmount = calculateFranchiseAmount(mission, franchiseBaseTtc);
   const amountAfterFranchise = Math.max(0, netBase - franchiseAmount);
   if (isTierceGuarantee(mission?.garantieType)) {
     return amountAfterFranchise;
@@ -371,6 +363,26 @@ const calculateIndemnisationFinale = (mission, netAfterVetusteTtc, franchiseBase
     amountAfterFranchise,
     getEffectiveResponsibility(mission?.garantieType, mission?.responsabilite)
   );
+};
+
+const calculateIndemnisationFinale = (mission, netAfterVetusteTtc, previousFranchiseBaseTtc) => {
+  const netBase = Math.max(0, netAfterVetusteTtc || 0);
+  const computed = calculateComputedIndemnisation(mission, netBase, netBase);
+
+  // Keep real manual overrides, but replace values that match the previous automatic formula.
+  if (mission && mission.indemnisationFinale !== undefined && mission.indemnisationFinale !== null) {
+    const stored = Number(mission.indemnisationFinale);
+    if (Number.isNaN(stored)) {
+      return computed;
+    }
+    const previousComputed = calculateComputedIndemnisation(mission, netBase, previousFranchiseBaseTtc);
+    if (Math.abs(stored - previousComputed) <= 0.01) {
+      return computed;
+    }
+    return Math.max(0, stored);
+  }
+
+  return computed;
 };
 
 const addSectionTitle = (doc, title) => {
@@ -1122,10 +1134,10 @@ const createMissionReport = (
   );
 
   const evaluationTotals = laborData?.totals || {};
-  const franchiseBaseTtc = evaluationTotals.grandTotalTtc || 0;
-  const netAfterVetusteTtc = Math.max(0, franchiseBaseTtc - damageVetusteLoss);
-  const franchiseCalculee = calculateFranchiseAmount(mission, franchiseBaseTtc);
-  const indemnisationValue = calculateIndemnisationFinale(mission, netAfterVetusteTtc, franchiseBaseTtc);
+  const grossEvaluationTtc = evaluationTotals.grandTotalTtc || 0;
+  const netAfterVetusteTtc = Math.max(0, grossEvaluationTtc - damageVetusteLoss);
+  const franchiseCalculee = calculateFranchiseAmount(mission, netAfterVetusteTtc);
+  const indemnisationValue = calculateIndemnisationFinale(mission, netAfterVetusteTtc, grossEvaluationTtc);
 
   addFramedSection(doc, 'Informations principales', () => {
     addCompactPrimaryInfoColumns(doc, mission);
@@ -1238,7 +1250,7 @@ const createMissionReport = (
     addInlineSummaryTable(doc, [
       ['Total main d\'oeuvre (TTC)', formatCurrency(laborTtc)],
       ['Fournitures (TTC)', formatCurrency(suppliesTtc)],
-      ['Montant total (TTC)', formatCurrency(combinedTtc), { emphasizeValue: true }],
+      ['Montant total (TTC)', formatCurrency(netAfterVetusteTtc), { emphasizeValue: true }],
     ]);
 
     const guaranteeItems = [

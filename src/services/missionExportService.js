@@ -69,15 +69,29 @@ const calculateFranchise = (mission, totalTtc) => {
   return Math.max(rateAmount, safeNumber(mission.garantieFranchiseMontant));
 };
 
-const calculateIndemnisation = (mission, totalTtc, vetusteTtc, franchise) => {
-  if (mission.indemnisationFinale !== null && mission.indemnisationFinale !== undefined) {
-    return Math.max(0, safeNumber(mission.indemnisationFinale));
-  }
-  const amountAfterDeductions = Math.max(0, totalTtc - vetusteTtc - franchise);
+const applyResponsibility = (mission, amount) => {
   if (guaranteeIgnoresResponsibility(mission.garantieType)) {
-    return amountAfterDeductions;
+    return amount;
   }
-  return amountAfterDeductions * ((100 - parseResponsibility(effectiveResponsibility(mission))) / 100);
+  return amount * ((100 - parseResponsibility(effectiveResponsibility(mission))) / 100);
+};
+
+const calculateIndemnisation = (mission, totalTtc, vetusteTtc, franchise, previousFranchise = null) => {
+  const netAfterVetuste = Math.max(0, totalTtc - vetusteTtc);
+  const computed = applyResponsibility(mission, Math.max(0, netAfterVetuste - franchise));
+
+  if (mission.indemnisationFinale !== null && mission.indemnisationFinale !== undefined) {
+    const stored = safeNumber(mission.indemnisationFinale);
+    if (previousFranchise !== null) {
+      const previousComputed = applyResponsibility(mission, Math.max(0, netAfterVetuste - previousFranchise));
+      if (Math.abs(stored - previousComputed) <= 0.01) {
+        return computed;
+      }
+    }
+    return Math.max(0, stored);
+  }
+
+  return computed;
 };
 
 const styleWorksheet = (worksheet, { currencyKeys = [], percentKeys = [] } = {}) => {
@@ -287,12 +301,15 @@ const createMissionsExport = async (missions) => {
       0,
       safeNumber(damageData.totals.totalTtc) - safeNumber(damageData.totals.totalAfterTtc)
     );
-    const franchiseCalculee = calculateFranchise(mission, totalTtc);
+    const totalAfterVetusteTtc = Math.max(0, totalTtc - vetusteTtc);
+    const franchiseCalculee = calculateFranchise(mission, totalAfterVetusteTtc);
+    const previousFranchiseCalculee = calculateFranchise(mission, totalTtc);
     const indemnisationFinale = calculateIndemnisation(
       mission,
       totalTtc,
       vetusteTtc,
-      franchiseCalculee
+      franchiseCalculee,
+      previousFranchiseCalculee
     );
 
     missionsSheet.addRow({
