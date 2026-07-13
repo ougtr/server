@@ -89,6 +89,7 @@ const mapMission = (mission) => {
       mission.montant_devis_initial !== null && mission.montant_devis_initial !== undefined
         ? Number(mission.montant_devis_initial)
         : null,
+    deduireTva: Number(mission.deduire_tva) === 1,
     regle: Number(mission.regle) === 1,
     synthese: mission.synthese || null,
     agentId: mission.agent_id !== null ? Number(mission.agent_id) : null,
@@ -414,6 +415,7 @@ const createMission = async (payload, currentUserId) => {
     valeurEpaves,
     indemnisationFinale,
     montantDevisInitial,
+    deduireTva,
     synthese,
     missionCode,
 
@@ -555,6 +557,7 @@ const createMission = async (payload, currentUserId) => {
   const valeurVenaleValue = normalizeAmount(valeurVenale);
   const valeurEpavesValue = normalizeAmount(valeurEpaves);
   const montantDevisInitialValue = normalizeAmount(montantDevisInitial);
+  const deduireTvaValue = deduireTva ? 1 : 0;
   const syntheseValue =
     typeof synthese === 'string'
       ? synthese.trim() || null
@@ -613,6 +616,7 @@ const createMission = async (payload, currentUserId) => {
       valeur_epaves,
       indemnisation_finale,
       montant_devis_initial,
+      deduire_tva,
       synthese,
       statut,
       created_by
@@ -622,7 +626,7 @@ const createMission = async (payload, currentUserId) => {
       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-      ?
+      ?, ?
     )`,
     [
       insurer.nom,
@@ -673,6 +677,7 @@ const createMission = async (payload, currentUserId) => {
       valeurEpavesValue,
       indemnisationValue,
       montantDevisInitialValue,
+      deduireTvaValue,
       syntheseValue,
       initialStatus,
       currentUserId,
@@ -976,6 +981,9 @@ const updateMission = async (id, payload) => {
       normalized = Number.isNaN(numeric) ? null : numeric;
     }
     pushUpdate('montant_devis_initial', normalized);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'deduireTva')) {
+    pushUpdate('deduire_tva', payload.deduireTva ? 1 : 0);
   }
   if (Object.prototype.hasOwnProperty.call(payload, 'synthese')) {
     const text = payload.synthese;

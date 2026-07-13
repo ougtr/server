@@ -111,6 +111,7 @@ const initializeDatabase = async () => {
       valeur_epaves REAL,
       indemnisation_finale REAL,
       montant_devis_initial REAL,
+      deduire_tva INTEGER NOT NULL DEFAULT 0,
       regle INTEGER NOT NULL DEFAULT 0,
       synthese TEXT,
       sinistre_type TEXT,
@@ -477,6 +478,14 @@ const initializeDatabase = async () => {
 
   try {
     await run('ALTER TABLE missions ADD COLUMN montant_devis_initial REAL');
+  } catch (error) {
+    if (!String(error.message).includes('duplicate column name')) {
+      throw error;
+    }
+  }
+
+  try {
+    await run('ALTER TABLE missions ADD COLUMN deduire_tva INTEGER NOT NULL DEFAULT 0');
   } catch (error) {
     if (!String(error.message).includes('duplicate column name')) {
       throw error;

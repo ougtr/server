@@ -365,9 +365,13 @@ const calculateComputedIndemnisation = (mission, netAfterVetusteTtc, franchiseBa
   );
 };
 
-const calculateIndemnisationFinale = (mission, netAfterVetusteTtc, previousFranchiseBaseTtc) => {
+const applyTvaDeduction = (amount, tvaDeduction) =>
+  Math.max(0, (Number(amount) || 0) - Math.max(0, Number(tvaDeduction) || 0));
+
+const calculateIndemnisationFinale = (mission, netAfterVetusteTtc, previousFranchiseBaseTtc, tvaDeduction = 0) => {
   const netBase = Math.max(0, netAfterVetusteTtc || 0);
-  const computed = calculateComputedIndemnisation(mission, netBase, netBase);
+  const computedBeforeTva = calculateComputedIndemnisation(mission, netBase, netBase);
+  const computed = applyTvaDeduction(computedBeforeTva, tvaDeduction);
 
   // Keep real manual overrides, but replace values that match the previous automatic formula.
   if (mission && mission.indemnisationFinale !== undefined && mission.indemnisationFinale !== null) {
@@ -376,10 +380,16 @@ const calculateIndemnisationFinale = (mission, netAfterVetusteTtc, previousFranc
       return computed;
     }
     const previousComputed = calculateComputedIndemnisation(mission, netBase, previousFranchiseBaseTtc);
-    if (Math.abs(stored - previousComputed) <= 0.01) {
+    const previousComputedWithTva = applyTvaDeduction(previousComputed, tvaDeduction);
+    if (
+      Math.abs(stored - computed) <= 0.01 ||
+      Math.abs(stored - computedBeforeTva) <= 0.01 ||
+      Math.abs(stored - previousComputed) <= 0.01 ||
+      Math.abs(stored - previousComputedWithTva) <= 0.01
+    ) {
       return computed;
     }
-    return Math.max(0, stored);
+    return tvaDeduction > 0 ? applyTvaDeduction(stored, tvaDeduction) : Math.max(0, stored);
   }
 
   return computed;
@@ -771,7 +781,7 @@ const addClosingAmountLine = (doc, amountInWords) => {
 };
 
 const addTableSection = (doc, headers, rows, firstColumnRatio = 0.2, options = {}) => {
-  const { headerHeight = 26, rowMinHeight = 17, rowPadding = 6 } = options;
+  const { headerHeight = 26, rowMinHeight = 17, rowPadding = 6, rowStyleResolver } = options;
   const tableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const remaining = tableWidth * (1 - firstColumnRatio);
   const colWidths = headers.map((_, index) =>
@@ -805,7 +815,10 @@ const addTableSection = (doc, headers, rows, firstColumnRatio = 0.2, options = {
   drawHeader();
 
   rows.forEach((row) => {
-    doc.font('Helvetica').fontSize(9);
+    const rowStyle = typeof rowStyleResolver === 'function' ? rowStyleResolver(row) || {} : {};
+    const rowFont = rowStyle.bold ? 'Helvetica-Bold' : 'Helvetica';
+
+    doc.font(rowFont).fontSize(9);
     const cellHeights = row.map((cell, index) =>
       doc.heightOfString(safeValue(cell), {
         width: colWidths[index] - 6,
@@ -829,7 +842,7 @@ const addTableSection = (doc, headers, rows, firstColumnRatio = 0.2, options = {
     let cellX = doc.page.margins.left;
     row.forEach((cell, index) => {
       doc
-        .font('Helvetica')
+        .font(rowFont)
         .fontSize(9)
         .fillColor('#0f172a')
         .text(safeValue(cell), cellX + 3, rowY + Math.max(3, Math.floor(rowPadding / 2)), {
@@ -1137,7 +1150,7 @@ const createMissionReport = (
   const grossEvaluationTtc = evaluationTotals.grandTotalTtc || 0;
   const netAfterVetusteTtc = Math.max(0, grossEvaluationTtc - damageVetusteLoss);
   const franchiseCalculee = calculateFranchiseAmount(mission, netAfterVetusteTtc);
-  const indemnisationValue = calculateIndemnisationFinale(mission, netAfterVetusteTtc, grossEvaluationTtc);
+  let indemnisationValue = 0;
 
   addFramedSection(doc, 'Informations principales', () => {
     addCompactPrimaryInfoColumns(doc, mission);
@@ -1208,6 +1221,13 @@ const createMissionReport = (
     const laborTtc = totals.totalTtc || 0;
     const suppliesTtc = totals.suppliesTtc || 0;
     const combinedTtc = laborTtc + suppliesTtc;
+    const tvaDeduction = mission.deduireTva ? combinedTva : 0;
+    indemnisationValue = calculateIndemnisationFinale(
+      mission,
+      netAfterVetusteTtc,
+      grossEvaluationTtc,
+      tvaDeduction
+    );
 
     const summaryRows = [
       [
@@ -1235,7 +1255,7 @@ const createMissionReport = (
         '',
         `${formatTableAmount(grandTotalHt)} HT`,
         formatTableAmount(combinedTva),
-        formatTableAmount(combinedTtc),
+        `${formatTableAmount(combinedTtc)} TTC`,
       ],
     ];
 
@@ -1244,7 +1264,14 @@ const createMissionReport = (
       ['Main d\'oeuvre', 'Nbr H.', 'Taux horaire', 'TVA', 'Hors taxe', 'T.V.A', 'Total TTC'],
       [...laborRows, ...summaryRows],
       0.24,
-      { headerHeight: 20, rowMinHeight: 14, rowPadding: 4 }
+      {
+        headerHeight: 20,
+        rowMinHeight: 14,
+        rowPadding: 4,
+        rowStyleResolver: (row) => ({
+          bold: row[0] === 'Montant total hors taxe',
+        }),
+      }
     );
 
     addInlineSummaryTable(doc, [

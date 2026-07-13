@@ -76,19 +76,29 @@ const applyResponsibility = (mission, amount) => {
   return amount * ((100 - parseResponsibility(effectiveResponsibility(mission))) / 100);
 };
 
-const calculateIndemnisation = (mission, totalTtc, vetusteTtc, franchise, previousFranchise = null) => {
+const applyTvaDeduction = (amount, tvaDeduction) =>
+  Math.max(0, safeNumber(amount) - Math.max(0, safeNumber(tvaDeduction)));
+
+const calculateIndemnisation = (mission, totalTtc, vetusteTtc, franchise, previousFranchise = null, tvaDeduction = 0) => {
   const netAfterVetuste = Math.max(0, totalTtc - vetusteTtc);
-  const computed = applyResponsibility(mission, Math.max(0, netAfterVetuste - franchise));
+  const computedBeforeTva = applyResponsibility(mission, Math.max(0, netAfterVetuste - franchise));
+  const computed = applyTvaDeduction(computedBeforeTva, tvaDeduction);
 
   if (mission.indemnisationFinale !== null && mission.indemnisationFinale !== undefined) {
     const stored = safeNumber(mission.indemnisationFinale);
     if (previousFranchise !== null) {
       const previousComputed = applyResponsibility(mission, Math.max(0, netAfterVetuste - previousFranchise));
-      if (Math.abs(stored - previousComputed) <= 0.01) {
+      const previousComputedWithTva = applyTvaDeduction(previousComputed, tvaDeduction);
+      if (
+        Math.abs(stored - computed) <= 0.01 ||
+        Math.abs(stored - computedBeforeTva) <= 0.01 ||
+        Math.abs(stored - previousComputed) <= 0.01 ||
+        Math.abs(stored - previousComputedWithTva) <= 0.01
+      ) {
         return computed;
       }
     }
-    return Math.max(0, stored);
+    return tvaDeduction > 0 ? applyTvaDeduction(stored, tvaDeduction) : Math.max(0, stored);
   }
 
   return computed;
@@ -297,6 +307,7 @@ const createMissionsExport = async (missions) => {
     ]);
 
     const totalTtc = safeNumber(laborData.totals.grandTotalTtc);
+    const totalTva = safeNumber(laborData.totals.grandTotalTva);
     const vetusteTtc = Math.max(
       0,
       safeNumber(damageData.totals.totalTtc) - safeNumber(damageData.totals.totalAfterTtc)
@@ -309,7 +320,8 @@ const createMissionsExport = async (missions) => {
       totalTtc,
       vetusteTtc,
       franchiseCalculee,
-      previousFranchiseCalculee
+      previousFranchiseCalculee,
+      mission.deduireTva ? totalTva : 0
     );
 
     missionsSheet.addRow({
