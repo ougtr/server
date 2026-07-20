@@ -1222,6 +1222,7 @@ const createMissionReport = (
     const suppliesTtc = totals.suppliesTtc || 0;
     const combinedTtc = laborTtc + suppliesTtc;
     const tvaDeduction = mission.deduireTva ? combinedTva : 0;
+    const totalAfterVetusteAndTva = Math.max(0, netAfterVetusteTtc - tvaDeduction);
     indemnisationValue = calculateIndemnisationFinale(
       mission,
       netAfterVetusteTtc,
@@ -1274,10 +1275,19 @@ const createMissionReport = (
       }
     );
 
+    if (mission.deduireTva) {
+      doc
+        .font('Helvetica-Oblique')
+        .fontSize(5.5)
+        .fillColor('#64748b')
+        .text('(*)TVA déduite', { align: 'left' });
+      doc.moveDown(0.1);
+    }
+
     addInlineSummaryTable(doc, [
       ['Total main d\'oeuvre (TTC)', formatCurrency(laborTtc)],
       ['Fournitures (TTC)', formatCurrency(suppliesTtc)],
-      ['Montant total (TTC)', formatCurrency(netAfterVetusteTtc), { emphasizeValue: true }],
+      ['Montant total (TTC)', formatCurrency(totalAfterVetusteAndTva), { emphasizeValue: true }],
     ]);
 
     const guaranteeItems = [
