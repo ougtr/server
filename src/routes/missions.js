@@ -23,6 +23,7 @@ const { optimizeUploadedPhoto } = require('../services/imageOptimizationService'
 const { ROLES, MISSION_STATUSES, PHOTO_PHASES, PHOTO_LABELS } = require('../constants');
 const { UPLOAD_DIR } = require('../config');
 const { createMissionReport } = require('../services/reportService');
+const { createMissionPhotoReport } = require('../services/photoReportService');
 const { createMissionHonorairesReport } = require('../services/honorairesReportService');
 const {
   createMissionPreliminaryContradictoireReport,
@@ -214,6 +215,26 @@ router.get('/export', async (req, res) => {
   } catch (error) {
     console.error('Erreur export missions Excel', error);
     res.status(500).json({ message: "Impossible de generer l'export des missions" });
+  }
+});
+
+router.get('/:id/photos-report', loadMissionForUser, async (req, res) => {
+  const phase = req.query.phase === undefined ? null : req.query.phase;
+  if (phase !== null && !PHOTO_PHASES.includes(phase)) {
+    return res.status(400).json({ message: 'Phase de photos invalide' });
+  }
+  try {
+    const photos = await listPhotosByMission(req.mission.id);
+    const doc = await createMissionPhotoReport(req.mission, photos, phase);
+    await sendPdfWithoutArchive(res, {
+      filename: `photos-mission-${req.mission.id}-${phase || 'toutes'}.pdf`,
+      doc,
+    });
+  } catch (error) {
+    console.error('Erreur PDF photos', error);
+    res.status(error.statusCode || 500).json({
+      message: error.statusCode ? error.message : 'Impossible de generer le PDF des photos',
+    });
   }
 });
 
