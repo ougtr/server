@@ -183,6 +183,8 @@ const migrateExistingPhotoWatermarks = async ({
     const summary = { total: photos.length, processed: 0, skipped: 0, failed: 0 };
     logger.info(`Filigrane : verification de ${photos.length} photo(s) existante(s).`);
     for (const photo of photos) {
+      // Yield even when skipping previously processed files, so HTTP requests can proceed.
+      await new Promise((resolve) => setImmediate(resolve));
       try {
         const result = await watermarkPhoto({
           filePath: path.resolve(uploadDir, String(photo.fichier).replace(/\\/g, '/')),
@@ -196,6 +198,8 @@ const migrateExistingPhotoWatermarks = async ({
         summary.failed += 1;
         logger.error(`Filigrane : photo ${photo.id} non traitee : ${error.message}`);
       }
+      const checked = summary.processed + summary.skipped + summary.failed;
+      if (checked % 100 === 0) logger.info(`Filigrane : ${checked}/${summary.total} photo(s) verifiee(s).`);
     }
     if (!summary.failed) writeJson(donePath, { ...summary, completedAt: new Date().toISOString() });
     logger.info('Filigrane : reprise terminee.', summary);

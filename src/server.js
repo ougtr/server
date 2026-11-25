@@ -6,9 +6,14 @@ const { migrateExistingPhotoWatermarks } = require('./services/photoWatermarkSer
 const startServer = async () => {
   try {
     await initializeDatabase();
-    await migrateExistingPhotoWatermarks();
     app.listen(PORT, () => {
       console.log(`API demarree sur le port ${PORT}`);
+      // Photo migration may take hours on large installations; keep the API available.
+      setImmediate(() => {
+        migrateExistingPhotoWatermarks().catch((error) => {
+          console.error('Filigrane : reprise interrompue, nouvel essai au prochain demarrage.', error);
+        });
+      });
     });
   } catch (error) {
     console.error('Impossible de démarrer le serveur', error);
