@@ -1,12 +1,12 @@
 const { run, get, all } = require('../db');
 
-const addPhotos = async ({ missionId, files, phase, label, uploadedBy }) => {
+const addPhotos = async ({ missionId, files, phase, label, uploadedBy, uploadedAt = new Date().toISOString() }) => {
   const saved = [];
   for (const file of files) {
     const storedPath = file.relativePath || file.filename;
     const inserted = await run(
-      'INSERT INTO mission_photos (mission_id, fichier, phase, label, uploaded_by) VALUES (?, ?, ?, ?, ?)',
-      [missionId, storedPath, phase, label || null, uploadedBy]
+      'INSERT INTO mission_photos (mission_id, fichier, phase, label, uploaded_by, uploaded_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [missionId, storedPath, phase, label || null, uploadedBy, uploadedAt]
     );
     saved.push({
       id: inserted.id,

@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
+const { randomUUID } = require('crypto');
 const { authenticate, authorizeRoles } = require('../middleware/auth');
 const missionService = require('../services/missionService');
 const { addPhotos, listPhotosByMission, getPhotoById, deletePhoto } = require('../services/photoService');
@@ -49,7 +50,7 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-    cb(null, `mission-${req.params.id}-${Date.now()}-${safeName}`);
+    cb(null, `mission-${req.params.id}-${Date.now()}-${randomUUID()}-${safeName}`);
   },
 });
 
@@ -516,15 +517,14 @@ router.post(
     let files = [];
     let photosPersisted = false;
     try {
-      files = await Promise.all(
-        req.files.map(async (file) => {
-          const optimizedFile = await optimizeUploadedPhoto(file);
-          return {
-            ...optimizedFile,
-            relativePath: `${req.params.id}/${optimizedFile.filename}`,
-          };
-        })
-      );
+      const uploadedAt = new Date().toISOString();
+      for (const file of req.files) {
+        const optimizedFile = await optimizeUploadedPhoto(file, { uploadedAt });
+        files.push({
+          ...optimizedFile,
+          relativePath: `${req.params.id}/${optimizedFile.filename}`,
+        });
+      }
 
       await addPhotos({
         missionId: req.params.id,
@@ -532,6 +532,7 @@ router.post(
         phase,
         label,
         uploadedBy: req.user.id,
+        uploadedAt,
       });
       photosPersisted = true;
 
@@ -550,7 +551,7 @@ router.post(
       res.status(201).json({ photos, mission });
     } catch (error) {
       if (!photosPersisted) {
-        cleanupUploadedFiles(files.length ? files : req.files);
+        cleanupUploadedFiles([...req.files, ...files]);
       }
       console.error('Erreur photo upload', error);
       res.status(500).json({ message: 'Erreur lors de lenregistrement des photos' });

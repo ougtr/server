@@ -16,6 +16,7 @@
         "cors": "^2.8.5",
         "dotenv": "^17.2.2",
         "exceljs": "^4.4.0",
+        "exif-reader": "2.0.3",
         "express": "^4.21.2",
         "jsonwebtoken": "^9.0.2",
         "morgan": "^1.10.1",
